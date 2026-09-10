@@ -1,0 +1,38 @@
+name: careershopper
+description: A local-first desktop application for finding and managing worthwhile job opportunities.
+publish_to: none
+version: 0.1.0-dev.1+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  archive: ^4.0.7
+  pdf: ^3.13.0
+  crypto: ^3.0.7
+  drift: ^2.34.4
+  flutter:
+    sdk: flutter
+  html: ^0.15.7
+  http: ^1.6.0
+  image: ^4.9.2
+  path: ^1.9.1
+  pasteboard: ^0.5.0
+  sqlite3: ^3.5.2
+  uuid: ^4.6.0
+
+dev_dependencies:
+  # Flutter 3.41 pins meta 1.18.0, so build_runner 2.16's analyzer floor is
+  # currently incompatible with this SDK.
+  build_runner: ^2.15.1
+  drift_dev: ^2.34.6
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/fonts/
+    - assets/writing-style.md
+    - assets/JobSpy-LICENSE

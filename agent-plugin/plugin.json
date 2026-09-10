@@ -1,0 +1,15 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "careershopper",
+  "version": "0.1.0-dev.1",
+  "description": "Inspect and manage local CareerShopper job, profile, and application data through MCP.",
+  "author": {
+    "name": "CareerShopper contributors"
+  },
+  "keywords": [
+    "careers",
+    "jobs",
+    "applications",
+    "mcp"
+  ]
+}

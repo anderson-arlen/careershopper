@@ -1,0 +1,16 @@
+<!-- Managed by CareerShopper make install. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="background" x1="32" y1="24" x2="224" y2="232" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6750A4"/>
+      <stop offset="1" stop-color="#3F2A78"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="url(#background)"/>
+  <path d="M73 91h110a15 15 0 0 1 15 15v75a15 15 0 0 1-15 15H73a15 15 0 0 1-15-15v-75a15 15 0 0 1 15-15Z" fill="#FFF"/>
+  <path d="M101 91V76c0-9 7-16 16-16h22c9 0 16 7 16 16v15" fill="none" stroke="#FFF" stroke-width="14" stroke-linecap="round"/>
+  <path d="M58 123h140v20c-20 13-43 20-70 20s-50-7-70-20v-20Z" fill="#EADDFF"/>
+  <rect x="118" y="145" width="20" height="25" rx="6" fill="#6750A4"/>
+  <circle cx="184" cy="178" r="30" fill="#2D7D62" stroke="#FFF" stroke-width="8"/>
+  <path d="m205 199 20 20" fill="none" stroke="#FFF" stroke-width="12" stroke-linecap="round"/>
+</svg>

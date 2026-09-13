@@ -618,6 +618,10 @@ void main() {
             .map((response) => (response['result'] as Map)['isError']),
         everyElement(false),
       );
+      runner.pending.complete();
+      await harnesses.watchConversations().firstWhere(
+        (rows) => rows.single.status == 'completed',
+      );
       final order = await database.select(database.aiWorkOrders).getSingle();
       final item = await database.select(database.aiWorkItems).getSingle();
       final storedJobs = await database.select(database.jobs).get();
@@ -656,11 +660,6 @@ void main() {
           savedDescription ? 'indeed::42' : 'example_ats::42',
         ]),
       );
-      final states = StreamIterator(harnesses.watchConversations());
-      await states.moveNext();
-      runner.pending.complete();
-      await states.moveNext();
-      await states.cancel();
       await Future<void>.delayed(const Duration(milliseconds: 20));
     });
   }

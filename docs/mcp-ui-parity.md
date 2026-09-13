@@ -694,7 +694,15 @@ explicit Stop leaves the conversation paused; Continue resumes pending work in
 that same conversation. A normal agent turn without an evaluation fails only its
 item and the queue continues. Harness/transport errors pause the run with its
 remaining work retained for an explicit continuation, rather than failing every job.
-Older per-listing search work orders are also recovered without merging history.
+Before recovery, legacy per-listing queues are consolidated into durable search
+conversations. An unambiguous saved match/run association supplies the search name;
+otherwise a recovered queue uses `Recovered search`. Different recorded runs and
+agent configurations remain separate. Existing work-item identities and completed
+evaluations are preserved; old transcripts remain attached to their original
+conversations, whose scope links to the continuation. Sending a follow-up to one
+of those old conversations routes to the grouped search. Migration is transactional
+and idempotent, and explicitly stopped conversations remain stopped. All new search
+dispatches use the grouped path, including callers without a saved-search ID.
 
 `ai_conversations_list` exposes the same search-derived title.
 `ai_conversation_get` exposes the search identity and queue in `scope`, per-job

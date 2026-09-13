@@ -8,7 +8,7 @@ import 'package:careershopper/src/storage/ai_harness_repository.dart';
 import 'package:careershopper/src/storage/database.dart';
 import 'package:careershopper/src/storage/job_repository.dart';
 import 'package:drift/native.dart';
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart' show driftRuntimeOptions, Value;
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -53,6 +53,194 @@ void main() {
     await database.close();
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = false;
   });
+
+  for (final linked in [true, false]) {
+    test(
+      'legacy per-job queue becomes one resumable conversation (linked: $linked)',
+      () async {
+        final started = DateTime.utc(2026, 9, 1, 10);
+        final finished = started.add(const Duration(seconds: 30));
+        final created = finished.add(const Duration(seconds: 1));
+        final profile = await database
+            .select(database.aiHarnessProfiles)
+            .getSingle();
+        if (linked) {
+          await database
+              .into(database.sourceConfigs)
+              .insert(
+                SourceConfigsCompanion.insert(
+                  id: 'source',
+                  sourceFamily: 'example',
+                  adapterId: 'example',
+                  createdAt: started,
+                  updatedAt: started,
+                ),
+              );
+          await database
+              .into(database.searchRuns)
+              .insert(
+                SearchRunsCompanion.insert(
+                  id: 'run',
+                  savedSearchId: 'engineering',
+                  sourceConfigId: 'source',
+                  status: 'completed',
+                  startedAt: started,
+                  finishedAt: Value(finished),
+                ),
+              );
+        }
+        for (var i = 0; i < jobs.length; i++) {
+          await database
+              .into(database.aiWorkOrders)
+              .insert(
+                AiWorkOrdersCompanion.insert(
+                  id: 'legacy-$i',
+                  kind: 'search_analysis',
+                  status: i == 0 ? 'running' : 'queued',
+                  scopeJson: jsonEncode({
+                    'job_ids': [jobs[i]],
+                    'url': 'https://example.test/search/$i',
+                  }),
+                  agentId: Value(profile.id),
+                  acpSessionId: i == 0
+                      ? const Value('legacy-session')
+                      : const Value(null),
+                  title: Value('Analyze role $i'),
+                  promptVersion: 'search-evaluation-v5',
+                  createdAt: created,
+                  updatedAt: created,
+                ),
+              );
+          await database
+              .into(database.aiWorkItems)
+              .insert(
+                AiWorkItemsCompanion.insert(
+                  id: 'item-$i',
+                  workOrderId: 'legacy-$i',
+                  subjectId: jobs[i],
+                  status: i == 0 ? 'running' : 'queued',
+                  idempotencyKey: 'legacy-item-$i',
+                  updatedAt: created,
+                ),
+              );
+          if (linked) {
+            await database
+                .into(database.jobSearchMatches)
+                .insert(
+                  JobSearchMatchesCompanion.insert(
+                    jobId: jobs[i],
+                    savedSearchId: 'engineering',
+                    firstMatchedAt: started.add(const Duration(seconds: 10)),
+                    lastMatchedAt: started.add(const Duration(seconds: 10)),
+                  ),
+                );
+          }
+        }
+        await database
+            .into(database.aiActivityEntries)
+            .insert(
+              AiActivityEntriesCompanion.insert(
+                id: 'old-transcript',
+                workOrderId: 'legacy-0',
+                role: 'assistant',
+                kind: 'message',
+                content: const Value('Existing applicant context was loaded.'),
+                sequence: 0,
+                createdAt: created,
+                updatedAt: created,
+              ),
+            );
+        await database
+            .into(database.aiWorkOrders)
+            .insert(
+              AiWorkOrdersCompanion.insert(
+                id: 'paused',
+                kind: 'search_analysis',
+                status: 'interrupted',
+                scopeJson: '{}',
+                promptVersion: 'old',
+                createdAt: created,
+                updatedAt: created,
+              ),
+            );
+        final saved = await _call(
+          database,
+          'job_evaluation_submit',
+          _evaluation(jobs.last),
+          orderId: 'legacy-2',
+        );
+        expect(saved, isNot(contains('error')));
+        await database.customStatement(
+          "UPDATE ai_work_orders SET status = 'running' WHERE id = 'legacy-2'",
+        );
+        await database.customStatement(
+          "UPDATE ai_work_items SET status = 'running' WHERE id = 'item-2'",
+        );
+        expect(await harness.resumePendingSearchAnalysis(), 1);
+        await _waitFor(() => runner.requests.length == 1);
+        final newId = runner.requests.first.workOrderId;
+        expect(newId, isNot(startsWith('legacy-')));
+        final orders = await database.select(database.aiWorkOrders).get();
+        final root = orders.singleWhere((o) => o.id == newId);
+        expect(
+          root.title,
+          linked
+              ? 'Evaluate search: Remote engineering'
+              : 'Evaluate search: Recovered search',
+        );
+        expect(runner.requests.first.existingSessionId, 'legacy-session');
+        expect(
+          runner.requests.first.resumedPrompt,
+          contains('current search workflow replaces'),
+        );
+        expect(
+          (jsonDecode(root.scopeJson) as Map)['legacy_work_order_ids'],
+          hasLength(3),
+        );
+        for (final old in orders.where((o) => o.id.startsWith('legacy-'))) {
+          expect(old.status, 'completed');
+          expect(
+            (jsonDecode(old.scopeJson) as Map)['continued_in_work_order_id'],
+            newId,
+          );
+        }
+        expect(
+          orders.singleWhere((o) => o.id == 'paused').status,
+          'interrupted',
+        );
+        final history =
+            (await database.select(database.aiActivityEntries).get())
+                .singleWhere((e) => e.id == 'old-transcript');
+        expect(history.workOrderId, 'legacy-0');
+        expect(history.content, 'Existing applicant context was loaded.');
+        expect(await harness.resumePendingSearchAnalysis(), 0);
+        await harness.interruptConversation(newId);
+        await harness.sendMessage('legacy-0', 'Continue grouped work');
+        await _waitFor(() => runner.requests.length == 2);
+        expect(runner.requests.last.workOrderId, newId);
+        await _evaluate(database, runner.requests.last);
+        runner.complete(1);
+        await _waitFor(() => runner.requests.length == 3);
+        expect(runner.requests.last.jobId, jobs[1]);
+        await _evaluate(database, runner.requests.last);
+        runner.complete(2);
+        await harness.watchConversations().firstWhere(
+          (rows) =>
+              rows.singleWhere((r) => r.id == newId).status == 'completed',
+        );
+        expect(
+          await database.select(database.jobEvaluations).get(),
+          hasLength(3),
+        );
+        expect(
+          (await database.select(database.aiWorkItems).get())
+              .map((i) => i.workOrderId)
+              .toSet(),
+          {newId},
+        );
+      },
+    );
+  }
 
   for (final checkpoint in [
     'before_first',

@@ -904,7 +904,7 @@ void main() {
   });
 
   test(
-    'search batches reuse applicant context with separate job scopes and serialized followups',
+    'search batches always claim jobs into one conversation and reuse applicant context',
     () async {
       await harnesses.saveProfile(
         const AiHarnessProfileDraft(
@@ -947,12 +947,12 @@ void main() {
       await _waitFor(() => runner.requests.isNotEmpty);
       expect(runner.requests, hasLength(1));
       final orders = await database.select(database.aiWorkOrders).get();
-      expect(orders, hasLength(2));
+      expect(orders, hasLength(1));
       expect(
         orders
             .map((o) => (jsonDecode(o.scopeJson)['job_ids'] as List).single)
             .toSet(),
-        {first, second},
+        {first},
       );
       expect(runner.requests.single.scopedMcp, isTrue);
       expect(runner.requests.single.jobId, first);
@@ -980,10 +980,7 @@ void main() {
       expect(runner.requests.last.jobId, second);
       expect(runner.requests.last.existingSessionId, 'first-job-session');
       final next = runner.requests.last;
-      expect(
-        next.resumedPrompt,
-        contains('Evaluate the next job individually'),
-      );
+      expect(next.resumedPrompt, contains('Evaluate this job individually'));
       expect(
         next.resumedPrompt,
         contains('do not fetch or repeat the applicant profile'),
@@ -1003,34 +1000,16 @@ void main() {
       );
       expect(
         runner.requests.last.workOrderId,
-        isNot(runner.requests.first.workOrderId),
+        runner.requests.first.workOrderId,
       );
       expect(runner.requests.last.prompt, isNot(contains(first)));
       expect(
         runner.requests.last.prompt,
         contains('single-job search evaluation'),
       );
-      await harnesses.sendMessage(
-        runner.requests.first.workOrderId,
-        'Explain the first evaluation',
-      );
-      // The earlier job must not load the shared session during this turn.
-      await Future<void>.delayed(const Duration(milliseconds: 30));
-      expect(runner.requests, hasLength(2));
       runner.complete(1);
-      await _waitFor(() => runner.requests.length == 3);
-      expect(runner.requests.last.existingSessionId, 'first-job-session');
-      expect(
-        runner.requests.last.workOrderId,
-        runner.requests.first.workOrderId,
-      );
-      expect(
-        runner.requests.last.prompt,
-        contains('Explain the first evaluation'),
-      );
-      runner.complete(2);
       await harnesses.watchConversations().firstWhere(
-        (rows) => rows.every((r) => !['queued', 'running'].contains(r.status)),
+        (rows) => rows.single.status == 'failed',
       );
       final items = await database.select(database.aiWorkItems).get();
       expect(items.firstWhere((i) => i.subjectId == first).status, 'completed');
@@ -1175,7 +1154,12 @@ void main() {
         expect(resumed.existingSessionId, 'blocked-import-session');
         expect(resumed.images.single.bytes, image.bytes);
         expect(resumed.prompt, contains(jobPostingContentInstructions));
-        expect(resumed.prompt, contains('supersedes any earlier instruction'));
+        if (!fromSearch) {
+          expect(
+            resumed.prompt,
+            contains('supersedes any earlier instruction'),
+          );
+        }
         expect(resumed.prompt, contains('Use this screenshot and summary'));
         expect(resumed.prompt, contains(request.workOrderId));
         expect(resumed.scopedMcp, true);
@@ -1217,7 +1201,7 @@ void main() {
       runner.complete(0); // No evaluation: fails only this job.
       await _waitFor(() => runner.requests.length == 2);
       expect(runner.requests.last.jobId, ids[2]);
-      expect(runner.requests.last.existingSessionId, isNull);
+      expect(runner.requests.last.existingSessionId, 'failed-session');
       await database.customStatement(
         "UPDATE ai_work_items SET status = 'completed' WHERE subject_id = ?",
         [ids[2]],

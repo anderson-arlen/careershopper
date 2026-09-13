@@ -1804,42 +1804,21 @@ Review (untrusted feedback): ${jsonEncode(review.toString())}''',
     String? savedSearchId,
   }) async {
     if (jobIds.isEmpty) return 0;
-    if (savedSearchId != null) {
-      return _dispatchNamedSearch(jobIds, savedSearchId);
-    }
-    final queued = await database.transaction(() async {
-      final candidates = await JobRepository(
-        database,
-      ).searchAnalysisCandidates(jobIds);
-      await (database.update(database.jobs)..where(
-            (r) =>
-                r.id.isIn(candidates) &
-                r.reviewState.equals('hidden_by_search'),
-          ))
-          .write(const JobsCompanion(reviewState: Value('pending_evaluation')));
-      final orders = <String>[];
-      for (final jobId in candidates) {
-        final dispatch = await _dispatchManualImport(jobId, fromSearch: true);
-        if (dispatch.launched) orders.add(dispatch.workOrderId);
-      }
-      return orders;
-    });
-    // Reuse context within this search, but expose only the current job's scope.
-    _searchAnalysisTail = _searchAnalysisTail.then((_) async {
-      ({String id, String profileKey})? session;
-      for (final orderId in queued) {
-        session = await _runQueuedImport(orderId, previousSession: session);
-      }
-    });
-    return queued.length;
+    return _dispatchNamedSearch(jobIds, savedSearchId);
   }
 
   final _scheduledSearches = <String>{};
 
-  Future<int> _dispatchNamedSearch(List<String> jobIds, String searchId) async {
-    final search = await (database.select(
-      database.savedSearches,
-    )..where((r) => r.id.equals(searchId))).getSingle();
+  Future<int> _dispatchNamedSearch(
+    List<String> jobIds,
+    String? searchId,
+  ) async {
+    final search = searchId == null
+        ? null
+        : await (database.select(
+            database.savedSearches,
+          )..where((r) => r.id.equals(searchId))).getSingle();
+    final searchName = search?.name ?? 'Job matching';
     final profile = await _defaultAcpProfile(AiAgentPurpose.jobMatching);
     final id = _uuid.v7();
     final now = DateTime.now().toUtc();
@@ -1864,13 +1843,13 @@ Review (untrusted feedback): ${jsonEncode(review.toString())}''',
               scopeJson: jsonEncode({
                 'search_queue': true,
                 'saved_search_id': searchId,
-                'search_name': search.name,
+                'search_name': searchName,
                 'search_job_ids': candidates,
                 'job_ids': [candidates.first],
               }),
               agentId: Value(profile.id),
               configValuesJson: Value(profile.configValuesJson),
-              title: Value('Evaluate search: ${search.name}'),
+              title: Value('Evaluate search: $searchName'),
               promptVersion: 'search-evaluation-v7',
               createdAt: now,
               updatedAt: now,
@@ -1895,7 +1874,7 @@ Review (untrusted feedback): ${jsonEncode(review.toString())}''',
         role: 'user',
         kind: 'message',
         text:
-            'Evaluate the ${candidates.length} new listings from ${search.name}, one at a time.',
+            'Evaluate the ${candidates.length} new listings from $searchName, one at a time.',
         now: now,
       );
       return candidates.length;
@@ -1917,6 +1896,7 @@ Review (untrusted feedback): ${jsonEncode(review.toString())}''',
 
   /// Called once by the desktop at startup, before expiring old leases.
   Future<int> resumePendingSearchAnalysis() async {
+    await _consolidateLegacySearchQueues();
     final orders =
         await (database.select(database.aiWorkOrders)
               ..where(
@@ -1974,31 +1954,197 @@ Review (untrusted feedback): ${jsonEncode(review.toString())}''',
           now: DateTime.now().toUtc(),
         );
       });
-      if ((jsonDecode(order.scopeJson) as Map)['search_queue'] == true) {
-        _enqueueSavedSearch(order.id);
-      } else {
-        // Older versions saved one work order per listing.
-        _scheduledSearches.add(order.id);
-        _searchAnalysisTail = _searchAnalysisTail.then((_) async {
-          try {
-            final profile = await _profileForOrder(order);
-            await _runQueuedImport(
-              order.id,
-              previousSession: order.acpSessionId == null
-                  ? null
-                  : (
-                      id: order.acpSessionId!,
-                      profileKey: _searchProfileKey(profile),
-                    ),
-            );
-          } finally {
-            _scheduledSearches.remove(order.id);
-          }
-        });
-      }
+      _enqueueSavedSearch(order.id);
       resumed++;
     }
     return resumed;
+  }
+
+  /// Old releases persisted one conversation per listing. Move unfinished
+  /// items, not transcripts or evaluations, into one durable search run.
+  Future<void> _consolidateLegacySearchQueues() async {
+    await database.transaction(() async {
+      final legacy =
+          await (database.select(database.aiWorkOrders)
+                ..where(
+                  (r) =>
+                      r.kind.equals('search_analysis') &
+                      r.status.isIn(['queued', 'running']),
+                )
+                ..orderBy([
+                  (r) => OrderingTerm.asc(r.createdAt),
+                  (r) => OrderingTerm.asc(r.id),
+                ]))
+              .get();
+      final groups =
+          <
+            String,
+            ({
+              String? searchId,
+              String name,
+              String? runId,
+              List<AiWorkOrderRow> orders,
+            })
+          >{};
+      for (final order in legacy) {
+        final scope = jsonDecode(order.scopeJson) as Map;
+        if (scope['search_queue'] == true ||
+            _activeTurns.containsKey(order.id) ||
+            _scheduledSearches.contains(order.id)) {
+          continue;
+        }
+        final items = await (database.select(
+          database.aiWorkItems,
+        )..where((r) => r.workOrderId.equals(order.id))).get();
+        if (items.isEmpty) continue;
+        final jobIds = items.map((i) => i.subjectId).toList();
+        // Link only a unique recorded run whose observation interval contains
+        // the match and which had finished before this work was created.
+        final matches = await database
+            .customSelect(
+              '''SELECT DISTINCT r.id AS run_id,
+            s.id AS search_id, s.name, r.finished_at
+          FROM job_search_matches m JOIN saved_searches s ON s.id = m.saved_search_id
+          JOIN search_runs r ON r.saved_search_id = s.id
+          WHERE m.job_id IN (${List.filled(jobIds.length, '?').join(',')})
+            AND m.last_matched_at BETWEEN r.started_at AND r.finished_at
+            AND r.finished_at <= ? ORDER BY r.finished_at DESC''',
+              variables: [
+                ...jobIds.map(Variable<String>.new),
+                Variable<DateTime>(order.createdAt),
+              ],
+            )
+            .get();
+        final latest = matches.isEmpty
+            ? null
+            : matches.first.read<DateTime>('finished_at');
+        final candidates = matches
+            .where((r) => r.read<DateTime>('finished_at') == latest)
+            .toList();
+        final match = candidates.length == 1 ? candidates.single : null;
+        final searchId = match?.read<String>('search_id');
+        final name = match?.read<String>('name') ?? 'Recovered search';
+        final runId = match?.read<String>('run_id');
+        final key = jsonEncode([
+          runId ?? order.createdAt.toIso8601String(),
+          order.agentId,
+          order.configValuesJson,
+        ]);
+        final group = groups.putIfAbsent(
+          key,
+          () => (searchId: searchId, name: name, runId: runId, orders: []),
+        );
+        group.orders.add(order);
+      }
+      for (final group in groups.values) {
+        final oldIds = group.orders.map((o) => o.id).toList();
+        final items = await (database.select(
+          database.aiWorkItems,
+        )..where((r) => r.workOrderId.isIn(oldIds))).get();
+        final orderedItems = [
+          for (final order in group.orders)
+            ...items.where((i) => i.workOrderId == order.id),
+        ];
+        final sessions =
+            group.orders.where((o) => o.acpSessionId != null).toList()
+              ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        final previous = sessions.firstOrNull ?? group.orders.first;
+        final profile = previous.agentId == null
+            ? null
+            : await (database.select(database.aiHarnessProfiles)
+                    ..where((r) => r.id.equals(previous.agentId!)))
+                  .getSingleOrNull();
+        final id = _uuid.v7();
+        final now = DateTime.now().toUtc();
+        final jobIds = orderedItems.map((i) => i.subjectId).toSet().toList();
+        await database
+            .into(database.aiWorkOrders)
+            .insert(
+              AiWorkOrdersCompanion.insert(
+                id: id,
+                kind: 'search_analysis',
+                status: 'queued',
+                scopeJson: jsonEncode({
+                  'search_queue': true,
+                  'saved_search_id': group.searchId,
+                  'search_name': group.name,
+                  'search_run_id': group.runId,
+                  'search_job_ids': jobIds,
+                  'job_ids': [jobIds.first],
+                  'legacy_work_order_ids': oldIds,
+                  if (profile != null)
+                    'session_profile_key': _searchProfileKey(
+                      profile,
+                      previous.configValuesJson,
+                    ),
+                }),
+                agentId: Value(previous.agentId),
+                acpSessionId: Value(previous.acpSessionId),
+                configValuesJson: Value(previous.configValuesJson),
+                title: Value('Evaluate search: ${group.name}'),
+                promptVersion: 'search-evaluation-v8',
+                createdAt: group.orders.first.createdAt,
+                updatedAt: now,
+              ),
+            );
+        for (final item in orderedItems) {
+          final job = await (database.select(
+            database.jobs,
+          )..where((r) => r.id.equals(item.subjectId))).getSingleOrNull();
+          final evaluated = job?.currentEvaluationId != null;
+          await (database.update(
+            database.aiWorkItems,
+          )..where((r) => r.id.equals(item.id))).write(
+            AiWorkItemsCompanion(
+              workOrderId: Value(id),
+              status: Value(
+                evaluated || item.status == 'completed'
+                    ? 'completed'
+                    : ['running', 'submitted'].contains(item.status)
+                    ? 'queued'
+                    : item.status,
+              ),
+              error: evaluated ? const Value(null) : const Value.absent(),
+            ),
+          );
+        }
+        for (final old in group.orders) {
+          final oldScope = (jsonDecode(old.scopeJson) as Map)
+              .cast<String, Object?>();
+          oldScope['continued_in_work_order_id'] = id;
+          final originalItem = orderedItems.firstWhere(
+            (i) => i.workOrderId == old.id,
+          );
+          await (database.update(
+            database.aiWorkOrders,
+          )..where((r) => r.id.equals(old.id))).write(
+            AiWorkOrdersCompanion(
+              status: const Value('completed'),
+              leasedUntil: const Value(null),
+              scopeJson: Value(jsonEncode(oldScope)),
+              jobId: Value(originalItem.subjectId),
+              updatedAt: Value(now),
+            ),
+          );
+          await _insertActivity(
+            workOrderId: old.id,
+            role: 'system',
+            kind: 'message',
+            text:
+                'Unfinished work continues in Evaluate search: ${group.name} ($id). This transcript is retained as history.',
+            now: now,
+          );
+        }
+        await _insertActivity(
+          workOrderId: id,
+          role: 'system',
+          kind: 'message',
+          text:
+              'Consolidated ${oldIds.length} older per-listing conversations into this search run. Existing transcripts and evaluations are retained.',
+          now: now,
+        );
+      }
+    });
   }
 
   String _searchProfileKey(
@@ -2115,12 +2261,14 @@ Review (untrusted feedback): ${jsonEncode(review.toString())}''',
               prompt:
                   '${_manualImportPrompt(workOrderId: id, jobId: jobId, url: url, fromSearch: true, profileInstructions: profileInstructions)}$message',
               resumedPrompt:
-                  'Continue search `${scope['search_name']}` with only job `$jobId` at `$url`. '
-                  'Work order: `$id`. Use `careershopper_session`; check `health_get` and `job_get`. '
-                  'This is the current assignment, replacing previous jobs. Continue from saved content and progress. '
-                  '$profileInstructions '
-                  'Use the established search workflow and retrieval-block rules. Evaluate this job individually without scripts or keyword scoring. '
-                  'Save its reasoned `job_evaluation_submit` and end the turn. Do not apply or change review decisions.$message',
+                  firstTurn && scope.containsKey('legacy_work_order_ids')
+                  ? 'The current search workflow replaces earlier per-job instructions.\n${_manualImportPrompt(workOrderId: id, jobId: jobId, url: url, fromSearch: true, profileInstructions: profileInstructions)}$message'
+                  : 'Continue search `${scope['search_name']}` with only job `$jobId` at `$url`. '
+                        'Work order: `$id`. Use `careershopper_session`; check `health_get` and `job_get`. '
+                        'This is the current assignment, replacing previous jobs. Continue from saved content and progress. '
+                        '$profileInstructions '
+                        'Use the established search workflow and retrieval-block rules. Evaluate this job individually without scripts or keyword scoring. '
+                        'Save its reasoned `job_evaluation_submit` and end the turn. Do not apply or change review decisions.$message',
               onSessionStarted: (session) async {
                 scope['session_profile_key'] = profileKey;
                 await (database.update(
@@ -2210,10 +2358,7 @@ Review (untrusted feedback): ${jsonEncode(review.toString())}''',
   Future<AiDispatchResult> dispatchManualImport(String jobId) =>
       _dispatchManualImport(jobId);
 
-  Future<AiDispatchResult> _dispatchManualImport(
-    String jobId, {
-    bool fromSearch = false,
-  }) async {
+  Future<AiDispatchResult> _dispatchManualImport(String jobId) async {
     final profile = await _defaultAcpProfile(AiAgentPurpose.jobMatching);
     if (profile.protocol != 'acp_stdio') {
       throw StateError(
@@ -2230,11 +2375,7 @@ Review (untrusted feedback): ${jsonEncode(review.toString())}''',
     final snapshot = await (database.select(
       database.jobSnapshots,
     )..where((row) => row.id.equals(job.currentSnapshotId!))).getSingle();
-    var evaluationUrl = snapshot.applicationUrl;
-    if (fromSearch) {
-      evaluationUrl = await _searchEvaluationUrl(jobId, evaluationUrl);
-    }
-    final url = evaluationUrl;
+    final url = snapshot.applicationUrl;
     if (url == null || url.isEmpty) {
       throw ArgumentError('This job has no URL to inspect.');
     }
@@ -2275,7 +2416,7 @@ Review (untrusted feedback): ${jsonEncode(review.toString())}''',
           .insert(
             AiWorkOrdersCompanion.insert(
               id: workOrderId,
-              kind: fromSearch ? 'search_analysis' : 'manual_job_import',
+              kind: 'manual_job_import',
               status: 'queued',
               leasedUntil: Value(now.add(const Duration(hours: 2))),
               scopeJson: jsonEncode({
@@ -2285,15 +2426,11 @@ Review (untrusted feedback): ${jsonEncode(review.toString())}''',
               agentId: Value(profile.id),
               configValuesJson: Value(profile.configValuesJson),
               title: Value(
-                fromSearch
-                    ? 'Analyze ${snapshot.title}'
-                    : isReanalysis
+                isReanalysis
                     ? 'Reanalyze ${snapshot.title}'
                     : 'Import ${Uri.parse(url).host} listing',
               ),
-              promptVersion: fromSearch
-                  ? 'search-evaluation-v6'
-                  : 'manual-import-v4',
+              promptVersion: 'manual-import-v4',
               createdAt: now,
               updatedAt: now,
             ),
@@ -2302,9 +2439,7 @@ Review (untrusted feedback): ${jsonEncode(review.toString())}''',
         workOrderId: workOrderId,
         role: 'user',
         kind: 'message',
-        text: fromSearch
-            ? 'Evaluate this job using its saved search description: $url'
-            : isReanalysis
+        text: isReanalysis
             ? 'Refresh the complete listing and reanalyze this job: $url'
             : 'Import and evaluate this job: $url',
         now: now,
@@ -2323,7 +2458,7 @@ Review (untrusted feedback): ${jsonEncode(review.toString())}''',
           );
     });
 
-    if (!fromSearch) unawaited(_runQueuedImport(workOrderId));
+    unawaited(_runQueuedImport(workOrderId));
     return AiDispatchResult(
       workOrderId: workOrderId,
       profileName: profile.name,
@@ -2331,40 +2466,17 @@ Review (untrusted feedback): ${jsonEncode(review.toString())}''',
     );
   }
 
-  Future<({String id, String profileKey})?> _runQueuedImport(
-    String workOrderId, {
-    ({String id, String profileKey})? previousSession,
-  }) async {
+  Future<void> _runQueuedImport(String workOrderId) async {
     final order = await (database.select(
       database.aiWorkOrders,
     )..where((r) => r.id.equals(workOrderId))).getSingle();
-    if (order.status != 'queued') return previousSession;
+    if (order.status != 'queued') return;
     final item = await (database.select(
       database.aiWorkItems,
     )..where((r) => r.workOrderId.equals(workOrderId))).getSingle();
     try {
       final scope = jsonDecode(order.scopeJson) as Map;
-      if (order.kind == 'search_analysis' &&
-          (await JobRepository(database).searchAnalysisCandidates([
-            item.subjectId,
-          ], ignoringWorkOrderId: workOrderId)).isEmpty) {
-        await (database.update(database.aiWorkItems)
-              ..where((r) => r.id.equals(item.id)))
-            .write(const AiWorkItemsCompanion(status: Value('skipped')));
-        await _insertActivity(
-          workOrderId: workOrderId,
-          role: 'system',
-          kind: 'message',
-          text:
-              'Skipped: this listing was evaluated or its eligibility changed while queued.',
-          now: DateTime.now().toUtc(),
-        );
-        await _setConversationStatus(workOrderId, 'completed');
-        return previousSession;
-      }
       final profile = await _profileForOrder(order);
-      final profileKey = _searchProfileKey(profile);
-      String? sessionId;
       final now = DateTime.now().toUtc();
       await database.transaction(() async {
         await (database.update(
@@ -2391,21 +2503,8 @@ Review (untrusted feedback): ${jsonEncode(review.toString())}''',
         workItemId: item.id,
         jobId: item.subjectId,
         url: scope['url'] as String,
-        fromSearch: order.kind == 'search_analysis',
-        existingSessionId: previousSession?.profileKey == profileKey
-            ? previousSession?.id
-            : null,
-        onSessionStarted: (id) async {
-          sessionId = id;
-          await _saveSessionId(workOrderId, id);
-        },
+        onSessionStarted: (id) => _saveSessionId(workOrderId, id),
       );
-      final finished = await (database.select(
-        database.aiWorkOrders,
-      )..where((r) => r.id.equals(workOrderId))).getSingle();
-      if (finished.status == 'completed' && sessionId != null) {
-        return (id: sessionId!, profileKey: profileKey);
-      }
     } on Object catch (error) {
       await _markWorkOrderFailed(
         workOrderId: workOrderId,
@@ -2413,7 +2512,6 @@ Review (untrusted feedback): ${jsonEncode(review.toString())}''',
         error: _workOrderError(error),
       );
     }
-    return null;
   }
 
   Future<void> _runWorkOrder({
@@ -2422,14 +2520,11 @@ Review (untrusted feedback): ${jsonEncode(review.toString())}''',
     required String workItemId,
     required String jobId,
     required String url,
-    bool fromSearch = false,
-    String? existingSessionId,
     required Future<void> Function(String) onSessionStarted,
   }) => _runControlled(workOrderId, (control) async {
     try {
-      final profileInstructions = fromSearch
-          ? await _matchingProfileInstructions()
-          : 'Call `profile_get` for the applicant facts and preferences.';
+      const profileInstructions =
+          'Call `profile_get` for the applicant facts and preferences.';
       await _runSessionTurn(
         AcpRunRequest(
           control: control,
@@ -2438,26 +2533,14 @@ Review (untrusted feedback): ${jsonEncode(review.toString())}''',
           workOrderId: workOrderId,
           jobId: jobId,
           jobUrl: url,
-          existingSessionId: existingSessionId,
-          allowNewSessionIfUnsupported: fromSearch,
-          permissionContext: fromSearch
-              ? '${profile.name}: evaluating saved search listing $url'
-              : '${profile.name}: importing and evaluating $url',
+          permissionContext: '${profile.name}: importing and evaluating $url',
           configValues: _decodeConfig(profile.configValuesJson),
           prompt: _manualImportPrompt(
             workOrderId: workOrderId,
             jobId: jobId,
             url: url,
-            fromSearch: fromSearch,
             profileInstructions: profileInstructions,
           ),
-          resumedPrompt: fromSearch
-              ? '''Evaluate the next job individually using the existing search workflow and applicant context.
-Work-order ID: `$workOrderId`. Job ID: `$jobId`. URL: `$url`.
-This assignment replaces the earlier job scope. Use `careershopper_session`; verify this work-order ID with `health_get`, then read only this assigned job with `job_get`.
-$profileInstructions
-Use the saved posting when usable. Keep prior retrieval-block and user-supplied-content rules. Assess this role on its own evidence, never by scripts, keyword counts, or earlier jobs' scores. Submit its reasoned `job_evaluation_submit`, then end this turn and wait for the next job. Do not apply or change the user's review decision.'''
-              : null,
           onSessionStarted: onSessionStarted,
           onSessionUpdate: (update, replaying) => replaying
               ? Future.value()
@@ -2714,6 +2797,12 @@ Use the saved posting when usable. Keep prior retrieval-block and user-supplied-
       database.aiWorkOrders,
     )..where((row) => row.id.equals(conversationId))).getSingleOrNull();
     if (order == null) throw ArgumentError('AI conversation no longer exists.');
+    final continuedIn =
+        (jsonDecode(order.scopeJson) as Map)['continued_in_work_order_id'];
+    if (continuedIn is String) {
+      await sendMessage(continuedIn, message, images: images);
+      return;
+    }
     if (order.status == 'running') {
       throw StateError('Wait for the current AI turn to finish.');
     }

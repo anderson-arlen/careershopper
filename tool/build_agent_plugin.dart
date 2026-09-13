@@ -53,6 +53,7 @@ Future<void> main() async {
     );
   }
   stdout.writeln('Built portable agent integration in agent-plugin/.');
+  await File('LICENSE').copy(p.join('agent-plugin', 'LICENSE'));
   await _copyDirectory(
     Directory(p.join('assets', 'fonts')),
     Directory(p.join('agent-plugin', 'assets', 'fonts')),

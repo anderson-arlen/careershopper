@@ -1,5 +1,15 @@
 # CareerShopper
 
+Created by Arlen Anderson. CareerShopper is available under the
+[MIT license](LICENSE).
+
+The Indeed adapter was informed by [JobSpy](https://github.com/speedyapply/JobSpy),
+including its GraphQL request and client protocol headers. Its
+[MIT notice](assets/JobSpy-LICENSE) is retained with the adapter.
+Bundled fonts and source icons have their own notices in
+[assets/fonts/DejaVu-LICENSE.txt](assets/fonts/DejaVu-LICENSE.txt) and
+[assets/sources/README.md](assets/sources/README.md).
+
 ## Preparing an application
 
 **Shared writing style** on Documents edits the reusable voice and prose rules

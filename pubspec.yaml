@@ -33,6 +33,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - LICENSE
     - assets/fonts/
     - assets/sources/indeed.png
     - assets/sources/linkedin.png

@@ -43,7 +43,8 @@
 
 - Keep tracked source, prompts, fixtures, and application identifiers free of
   personal identity and real applicant history. Use minimal synthetic fixtures.
-  Git author/committer metadata and ordinary example locations are allowed.
+  Public authorship credits in the license and README, Git author/committer
+  metadata, and ordinary example locations are allowed.
 
 - UI/MCP parity is a product requirement: every user-visible data read and
   application action must have an equivalent discoverable MCP tool/resource.

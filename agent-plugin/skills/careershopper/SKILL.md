@@ -163,8 +163,18 @@ terms. A `saved_search_run` performs external requests. Call it with
 provider backoff or unavailability as a retrieval stop condition; never work around it. This does not prevent local processing of saved or user-supplied content.
 A requested search includes analyzing its returned `candidate_job_ids`. For each,
 read `job_get`, skip existing evaluations and jobs the user has approved or
-discarded, and evaluate eligible jobs using `profile_get` and
-`job_evaluation_submit`. Use a complete saved posting; fetch and import the full
+discarded, and evaluate eligible jobs with `job_evaluation_submit`. Read
+`profile_get` once and retain the applicant context across jobs in the session.
+When the desktop supplies an applicant context version, reuse the loaded profile
+while that version is unchanged. Refresh only if the version changes or the
+profile is no longer in context (for example after compaction). An external
+caller without that version should refresh when profile freshness is uncertain.
+The desktop sends one job per turn in a shared search session; current work-order
+and job IDs replace earlier assignments. Check the current `careershopper_session`
+scope with `health_get`. Evaluate each role individually against applicant evidence;
+never generate scores with scripts, keyword counts, or batch heuristics. For a
+desktop-assigned job, submit its reasoned evaluation and end the turn before
+receiving the next job. Use a complete saved posting; fetch and import the full
 posting only when missing or truncated. Indeed API descriptions are saved posting
 content: evaluate them directly when complete, without browsing the application
 URL or searching for a logo. Only an empty description, a search excerpt, visible
@@ -226,7 +236,8 @@ compensation, benefits, workplace/location details, legal notices, and
 application instructions; omit only navigation, cookie banners, and unrelated
 site chrome. Re-read the returned job with
 `job_get`. If the returned employer is blocked, stop; otherwise read
-`profile_get` and submit the normal grounded evaluation with
+`profile_get` (or reuse the loaded profile under the search version rule) and
+submit the normal grounded evaluation with
 `job_evaluation_submit`. The evaluation completes the scoped work item. If the
 page cannot be accessed without authentication, a CAPTCHA, bypassing a block,
 or evading a rate limit, stop retrieval and explain the limitation. Use supplied

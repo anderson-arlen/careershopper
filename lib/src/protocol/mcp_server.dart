@@ -1611,7 +1611,7 @@ final _toolDefinitions = <Map<String, Object?>>[
   {
     'name': 'profile_get',
     'description':
-        'Read the saved resume content and preferences used for matching. Disabled entries remain matching context; application writers receive enabled content only. Legacy facts are archived and not returned.',
+        'Read the saved resume content and preferences used for matching. Disabled entries remain matching context; application writers receive enabled content only. Legacy facts are archived and not returned. Reuse the loaded applicant context across sequential job evaluations when the host-supplied applicant context version is unchanged; read again if it changes or the profile is no longer in context.',
     'inputSchema': {
       'type': 'object',
       'properties': {},

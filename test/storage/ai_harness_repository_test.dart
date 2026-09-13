@@ -11,6 +11,7 @@ import 'package:careershopper/src/storage/ai_agent_purpose.dart';
 import 'package:careershopper/src/protocol/mcp_ui_tools.dart';
 import 'package:careershopper/src/storage/database.dart';
 import 'package:careershopper/src/storage/job_repository.dart';
+import 'package:careershopper/src/storage/profile_repository.dart';
 import 'package:drift/native.dart';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
@@ -903,7 +904,7 @@ void main() {
   });
 
   test(
-    'search batches claim each eligible job once and expose incomplete work',
+    'search batches reuse applicant context with separate job scopes and serialized followups',
     () async {
       await harnesses.saveProfile(
         const AiHarnessProfileDraft(
@@ -977,7 +978,29 @@ void main() {
       runner.complete(0);
       await _waitFor(() => runner.requests.length == 2);
       expect(runner.requests.last.jobId, second);
-      expect(runner.requests.last.existingSessionId, isNull);
+      expect(runner.requests.last.existingSessionId, 'first-job-session');
+      final next = runner.requests.last;
+      expect(
+        next.resumedPrompt,
+        contains('Evaluate the next job individually'),
+      );
+      expect(
+        next.resumedPrompt,
+        contains('do not fetch or repeat the applicant profile'),
+      );
+      expect(next.resumedPrompt!.length, lessThan(next.prompt.length));
+      final versionPattern = RegExp(r'Applicant context version: `([^`]+)`');
+      expect(
+        versionPattern.firstMatch(next.resumedPrompt!)!.group(1),
+        versionPattern.firstMatch(runner.requests.first.prompt)!.group(1),
+      );
+      await next.onSessionStarted!('first-job-session');
+      expect(
+        (await database.select(database.aiWorkOrders).get())
+            .map((order) => order.acpSessionId)
+            .toSet(),
+        {'first-job-session'},
+      );
       expect(
         runner.requests.last.workOrderId,
         isNot(runner.requests.first.workOrderId),
@@ -987,9 +1010,27 @@ void main() {
         runner.requests.last.prompt,
         contains('single-job search evaluation'),
       );
+      await harnesses.sendMessage(
+        runner.requests.first.workOrderId,
+        'Explain the first evaluation',
+      );
+      // The earlier job must not load the shared session during this turn.
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(runner.requests, hasLength(2));
       runner.complete(1);
+      await _waitFor(() => runner.requests.length == 3);
+      expect(runner.requests.last.existingSessionId, 'first-job-session');
+      expect(
+        runner.requests.last.workOrderId,
+        runner.requests.first.workOrderId,
+      );
+      expect(
+        runner.requests.last.prompt,
+        contains('Explain the first evaluation'),
+      );
+      runner.complete(2);
       await harnesses.watchConversations().firstWhere(
-        (rows) => rows.any((r) => r.status == 'failed'),
+        (rows) => rows.every((r) => !['queued', 'running'].contains(r.status)),
       );
       final items = await database.select(database.aiWorkItems).get();
       expect(items.firstWhere((i) => i.subjectId == first).status, 'completed');
@@ -1172,6 +1213,7 @@ void main() {
         "UPDATE jobs SET review_state = 'discarded' WHERE id = ?",
         [ids[1]],
       );
+      await runner.requests.first.onSessionStarted!('failed-session');
       runner.complete(0); // No evaluation: fails only this job.
       await _waitFor(() => runner.requests.length == 2);
       expect(runner.requests.last.jobId, ids[2]);
@@ -1190,6 +1232,70 @@ void main() {
       expect(
         items.firstWhere((i) => i.subjectId == ids[2]).status,
         'completed',
+      );
+    },
+  );
+
+  test(
+    'search context refreshes after profile changes and resets for a new search',
+    () async {
+      await harnesses.saveProfile(
+        const AiHarnessProfileDraft(
+          name: 'Test',
+          executable: '/bin/true',
+          arguments: [],
+        ),
+      );
+      final ids = <String>[];
+      for (var i = 0; i < 4; i++) {
+        ids.add(
+          await jobs.queueManualUrl(
+            Uri.parse('https://example.test/context/$i'),
+          ),
+        );
+      }
+      expect(await harnesses.dispatchSearchAnalysis(ids.take(3).toList()), 3);
+      await _waitFor(() => runner.requests.length == 1);
+      await runner.requests.first.onSessionStarted!('search-session');
+      await database.customStatement(
+        "UPDATE jobs SET review_state = 'discarded' WHERE id = ?",
+        [ids[1]],
+      );
+      await database.customStatement(
+        "UPDATE ai_work_items SET status = 'completed' WHERE subject_id = ?",
+        [ids[0]],
+      );
+      await ProfileRepository(database).saveCareerPreference(
+        const CareerPreferenceDraft(
+          key: 'preferred_workplace',
+          value: ['remote'],
+        ),
+      );
+      runner.complete(0);
+      await _waitFor(() => runner.requests.length == 2);
+      final next = runner.requests.last;
+      expect(next.jobId, ids[2]);
+      expect(next.existingSessionId, 'search-session');
+      final version = RegExp(r'Applicant context version: `([^`]+)`');
+      expect(
+        version.firstMatch(next.resumedPrompt!)!.group(1),
+        isNot(version.firstMatch(runner.requests.first.prompt)!.group(1)),
+      );
+      await next.onSessionStarted!('search-session');
+      await database.customStatement(
+        "UPDATE ai_work_items SET status = 'completed' WHERE subject_id = ?",
+        [ids[2]],
+      );
+      runner.complete(1);
+      await harnesses.watchConversations().firstWhere(
+        (rows) => rows.every((r) => !['queued', 'running'].contains(r.status)),
+      );
+      expect(await harnesses.dispatchSearchAnalysis([ids[3]]), 1);
+      await _waitFor(() => runner.requests.length == 3);
+      expect(runner.requests.last.existingSessionId, isNull);
+      runner.complete(2);
+      await harnesses.watchConversations().firstWhere(
+        (rows) => rows.every((r) => !['queued', 'running'].contains(r.status)),
       );
     },
   );

@@ -46,6 +46,70 @@ void main() {
   Future<List<Map>> requests() async =>
       (await log.readAsLines()).map((line) => jsonDecode(line) as Map).toList();
 
+  for (final supportsResume in [true, false]) {
+    test(
+      'sequential search rebinds MCP and selects the correct prompt (resume: $supportsResume)',
+      () async {
+        final sessions = <String>[];
+        for (final order in ['first-job', 'second-job']) {
+          await runner.run(
+            AcpRunRequest(
+              executable: 'dart',
+              arguments: [
+                fixture,
+                log.path,
+                if (!supportsResume) 'no-session-load',
+              ],
+              workOrderId: order,
+              prompt: 'Full workflow and applicant context instructions',
+              resumedPrompt: 'Only the next job; reuse applicant context',
+              existingSessionId: sessions.lastOrNull,
+              allowNewSessionIfUnsupported: true,
+              onSessionStarted: (id) async => sessions.add(id),
+            ),
+          );
+        }
+        expect(sessions, ['fixture-session', 'fixture-session']);
+        final calls = await requests();
+        final starts = calls
+            .where((c) => ['session/new', 'session/load'].contains(c['method']))
+            .toList();
+        expect(starts.map((s) => s['method']), [
+          'session/new',
+          supportsResume ? 'session/load' : 'session/new',
+        ]);
+        for (var i = 0; i < starts.length; i++) {
+          final params = starts[i]['params'] as Map;
+          final server = (params['mcpServers'] as List).single as Map;
+          expect(server['name'], 'careershopper_session');
+          expect(
+            server['env'],
+            contains(
+              equals({
+                'name': 'CAREERSHOPPER_WORK_ORDER_ID',
+                'value': i == 0 ? 'first-job' : 'second-job',
+              }),
+            ),
+          );
+        }
+        final prompts = calls
+            .where((c) => c['method'] == 'session/prompt')
+            .map(
+              (c) =>
+                  (((c['params'] as Map)['prompt'] as List).single
+                      as Map)['text'],
+            )
+            .toList();
+        expect(prompts, [
+          'Full workflow and applicant context instructions',
+          supportsResume
+              ? 'Only the next job; reuse applicant context'
+              : 'Full workflow and applicant context instructions',
+        ]);
+      },
+    );
+  }
+
   for (final supportsImages in [false, true]) {
     test(
       'image prompts respect ACP capability (supported: $supportsImages)',

@@ -82,7 +82,7 @@ Future<void> main(List<String> args) async {
         result = {
           'protocolVersion': 1,
           'agentCapabilities': {
-            'loadSession': true,
+            'loadSession': !args.contains('no-session-load'),
             'promptCapabilities': {'image': args.contains('images')},
           },
         };

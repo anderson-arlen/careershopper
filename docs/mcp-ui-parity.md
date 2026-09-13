@@ -670,12 +670,24 @@ inspection remains available through the read-only MCP surfaces.
 ### Sequential search evaluation
 
 Search results are claimed atomically to avoid duplicate analysis, then evaluated
-one job at a time. Each job has its own work order, scoped MCP server, fresh ACP
-session, activity, and error state. Search analysis uses the exact same import,
-listing refresh, confirmed-profile comparison, and scoring prompt as individual
+one job at a time. A search dispatch reuses its ACP session after each successful
+job; subsequent turns contain only the next assignment and a small applicant
+context version. The version is computed locally from the saved Resume revision
+and career preferences. The agent reads `profile_get` once and reuses that context
+unless the version changes or the profile is no longer available in context.
+Each job retains its own work order, scoped MCP server, activity, and error state.
+Session loading supplies the current work-order MCP configuration; scope limits
+job access without discarding the applicant's conversation context. Resuming an
+earlier job waits for any active turn in that shared session to finish.
+Search analysis uses the same import, listing refresh, confirmed-profile
+comparison, and scoring instructions as individual
 Refresh & reanalyze; there is no separate bulk-scoring prompt. A failure affects
-only its listing and the queue continues. Eligibility is checked again before a
-queued job starts so newer evaluations and user decisions are preserved.
+only its listing and the queue continues in a fresh session. New search dispatches
+or changed harness settings also start fresh. ACP agents without session loading
+receive the full workflow in a new session for each job. Eligibility is checked
+again before a queued job starts so newer evaluations and user decisions are
+preserved; skipping a job does not discard the shared context. Prompts require
+individual evidence-based evaluations, not scripted or keyword-based scoring.
 
 Existing `job_get`, `job_evaluation_submit`, and read-only activity tools expose
 the same per-job data. No general ACP launch tool is added. Search polling and

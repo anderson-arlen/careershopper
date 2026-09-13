@@ -36,10 +36,12 @@ class AcpRunRequest {
     required this.arguments,
     required this.workOrderId,
     required this.prompt,
+    this.resumedPrompt,
     this.jobId,
     this.permissionContext,
     this.jobUrl,
     this.existingSessionId,
+    this.allowNewSessionIfUnsupported = false,
     this.scopedMcp = true,
     this.onSessionStarted,
     this.onSessionUpdate,
@@ -59,7 +61,9 @@ class AcpRunRequest {
   final String? permissionContext;
   final String? jobUrl;
   final String prompt;
+  final String? resumedPrompt;
   final String? existingSessionId;
+  final bool allowNewSessionIfUnsupported;
   final bool scopedMcp;
   final Map<String, Object> configValues;
   final AcpConfigure? configure;
@@ -287,7 +291,10 @@ class StdioAcpAgentRunner implements AcpAgentRunner {
       String sessionId;
       Map<String, Object?> session;
       // A screening pass must never inherit a writer or previous reviewer session.
-      final existingSessionId = request.recruitingReviewer
+      final existingSessionId =
+          request.recruitingReviewer ||
+              (request.allowNewSessionIfUnsupported &&
+                  !_supportsLoadSession(initialized))
           ? null
           : request.existingSessionId;
       if (existingSessionId case final existing?) {
@@ -314,8 +321,8 @@ class StdioAcpAgentRunner implements AcpAgentRunner {
           throw const FormatException('ACP agent returned no session ID.');
         }
         sessionId = value;
-        await request.onSessionStarted?.call(sessionId);
       }
+      await request.onSessionStarted?.call(sessionId);
       Future<List<AcpConfigOption>> setOption(String id, Object value) async {
         final option = configuration!.options
             .where((option) => option.id == id)
@@ -386,7 +393,9 @@ class StdioAcpAgentRunner implements AcpAgentRunner {
       prompting = true;
       final result = await client.prompt(
         sessionId: sessionId,
-        text: request.prompt,
+        text: existingSessionId == null
+            ? request.prompt
+            : request.resumedPrompt ?? request.prompt,
         images: request.images,
       );
       request.control?.checkCancelled();

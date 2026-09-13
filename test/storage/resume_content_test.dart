@@ -278,7 +278,10 @@ void main() {
       // A required bullet also brings its prerequisite obligations.
       (achievements[2] as Map)['required'] = true;
       expect(
-        () => content.compose(selected(['search-achievement', 'rollout']), 'revision'),
+        () => content.compose(
+          selected(['search-achievement', 'rollout']),
+          'revision',
+        ),
         throwsFormatException,
       );
       expect(
@@ -293,7 +296,10 @@ void main() {
         'achievements': [moved],
       });
       content.validateGenerated(
-        content.compose(selected(['search-achievement', 'ci', 'rollout']), 'revision'),
+        content.compose(
+          selected(['search-achievement', 'ci', 'rollout']),
+          'revision',
+        ),
         'revision',
       );
     },
@@ -619,7 +625,9 @@ void main() {
         );
       }
       final incomplete = plan('revision');
-      (incomplete['work_history'] as List).last['achievement_ids'] = ['search-achievement'];
+      (incomplete['work_history'] as List).last['achievement_ids'] = [
+        'search-achievement',
+      ];
       expect(
         () => content.compose(incomplete, 'revision'),
         throwsFormatException,
@@ -662,7 +670,10 @@ void main() {
         'title': 'Engineer',
         'dates': '2020 to Present',
         'achievements': [
-          {'id': 'search-achievement', 'text': 'Delivered production services.'},
+          {
+            'id': 'search-achievement',
+            'text': 'Delivered production services.',
+          },
         ],
       },
       {

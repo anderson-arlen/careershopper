@@ -104,6 +104,22 @@ StartupNotify=true
 StartupWMClass=com.example.careershopper
 ''', flush: true);
 
+  // Previous application IDs used different filenames. Remove only launchers
+  // created by this installer for the same executable, never unrelated entries.
+  await for (final entry in desktopEntry.parent.list(followLinks: false)) {
+    if (entry is! File ||
+        entry.path == desktopEntry.path ||
+        !p.basename(entry.path).endsWith('.careershopper.desktop')) {
+      continue;
+    }
+    final lines = await entry.readAsLines();
+    if (lines.firstOrNull == '# $_managedMarker' &&
+        lines.contains('Name=CareerShopper') &&
+        lines.contains('Exec=${_desktopQuote(launcher.path)}')) {
+      await entry.delete();
+    }
+  }
+
   await _refreshDesktopDatabase(desktopEntry.parent.path);
   stdout.writeln('Installed CareerShopper desktop bundle at ${appTarget.path}');
   stdout.writeln('Installed application launcher at ${launcher.path}');

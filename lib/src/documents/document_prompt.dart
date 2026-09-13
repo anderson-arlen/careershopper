@@ -1,190 +1,35 @@
-// Retained only to recognize an untouched older default during upgrades.
-const previousDefaultDocumentGenerationPrompt =
-    '''Write a tailored resume and cover letter in the applicant's voice.
-Lead with relevant scope, ownership, consequential decisions, and outcomes. Use clear language a general reviewer can understand, with relevant confirmed terminology from the job posting woven in naturally.
-Preserve accurate employer names, official titles, dates, education, and contact information. Never invent metrics, experience, or qualifications. Omit unsupported sections rather than filling gaps.
-Start each document with the applicant name as an H1, followed by contact information. The resume may place a short professional headline as H3 between the name and contact line.
-Use conventional resume sections in the configured order, and reverse-chronological experience. Use H2 for section headings and H3 for roles or projects. Do not compress useful evidence simply to force one page.
-Write a concise, specific cover letter explaining the relevant match without flattery, generic enthusiasm, internal notes, scores, or unsupported superlatives.''';
-
-// Retained to upgrade the untouched ATS-focused default without changing a custom prompt.
-const previousAtsDocumentGenerationPrompt =
-    '''Write a resume and cover letter tailored specifically to this job posting, in the applicant's voice. Make both documents match the employer's stated needs as closely as the confirmed facts allow, while remaining 100% truthful.
-
-Assume both documents will be parsed by an applicant tracking system (ATS) and screened by AI before a person reads them. Make the evidence-to-requirement match explicit and easy to extract. Identify the posting's important responsibilities, required and preferred qualifications, technologies, domain terms, and desired outcomes. Prioritize the most relevant confirmed evidence in both documents.
-
-Use the posting's exact terminology and phrases wherever they accurately describe confirmed experience. Prefer the employer's wording over a vague synonym when the meanings genuinely match; include a spelled-out term and its acronym naturally when useful. State relevant technologies, skills, responsibilities, and outcomes explicitly in context, rather than expecting a screening system to infer them. Connect each important supported requirement to concrete experience, decisions, ownership, or results. Apply this tailoring to the cover letter as well as the resume; neither should read as a generic reusable document.
-
-Truth takes precedence over keyword coverage. Never claim a technology, degree, certification, responsibility, seniority, metric, duration, or result without confirmed support. Preserve actual employer names, official titles, dates, and contact information. Do not rename a past role to match the advertised title or present transferable experience as direct experience with a tool the applicant has not used. Explain genuinely relevant transferable experience accurately; leave unsupported requirements unclaimed. No keyword stuffing, hidden text, fabricated equivalence, or instructions telling an automated reviewer how to rank, score, or accept the application. Persuade through explicit, well-supported evidence, not reviewer-directed commands.
-
-Select for relevance, not completeness. Omit optional sections and individual facts that do not materially strengthen the case for this particular role. Do not include an Education section merely to fill a template or include old, isolated introductory coursework that adds no meaningful evidence at the applicant's current career level. Do not volunteer or emphasize an absent degree or other missing qualification; never imply one exists, and answer any explicitly required application question honestly. Keep meaningful, relevant education or training when it strengthens the application. Apply the same relevance test to projects, skills, publications, patents, and older experience.
-
-Lead with relevant scope, ownership, consequential decisions, and outcomes. Use clear language a general reviewer can understand, with job-specific terms integrated naturally. Preserve chronological accuracy and use reverse-chronological experience. Omit unsupported or irrelevant sections rather than padding them. Do not compress useful evidence simply to force one page.
-
-Start each document with the applicant name as an H1, followed by contact information. The resume may place a short, truthful professional headline as H3 between the name and contact line. Use conventional resume sections in the configured order, H2 for section headings, and H3 for roles or projects.
-
-Write a concise, specific cover letter that connects the employer's highest-priority needs to the applicant's strongest relevant evidence using the posting's terminology where truthful. Avoid flattery, generic enthusiasm, internal notes, scores, and unsupported superlatives. Before submitting both drafts, check factual support, relevance, natural keyword coverage, and consistency between the resume and cover letter.''';
-
-// Retained to recognize the untouched evidence-focused default during upgrades.
-const previousEvidenceDocumentGenerationPrompt =
-    '''Write a resume and cover letter tailored specifically to this job posting, in the applicant's voice. Make both documents match the employer's stated needs as closely as the confirmed facts allow, while remaining 100% truthful.
-
-Assume both documents will be parsed by an applicant tracking system (ATS) and screened by AI before a person reads them. Make the evidence-to-requirement match explicit and easy to extract. Identify the posting's important responsibilities, required and preferred qualifications, technologies, domain terms, and desired outcomes. Prioritize the most relevant confirmed evidence in both documents.
-
-Use the posting's exact terminology and phrases wherever they accurately describe confirmed experience. Prefer the employer's wording over a vague synonym when the meanings genuinely match; include a spelled-out term and its acronym naturally when useful. State relevant technologies, skills, responsibilities, and outcomes explicitly in context, rather than expecting a screening system to infer them. Connect each important supported requirement to concrete experience, decisions, ownership, or results. Apply this tailoring to the cover letter as well as the resume; neither should read as a generic reusable document.
-
-Truth takes precedence over keyword coverage. Never claim a technology, degree, certification, responsibility, seniority, metric, duration, or result without confirmed support. Preserve actual employer names, official titles, dates, and contact information. Do not rename a past role to match the advertised title or present transferable experience as direct experience with a tool the applicant has not used. Explain genuinely relevant transferable experience accurately; leave unsupported requirements unclaimed. No keyword stuffing, hidden text, fabricated equivalence, or instructions telling an automated reviewer how to rank, score, or accept the application. Persuade through explicit, well-supported evidence, not reviewer-directed commands.
-
-Select evidence for the strength of the whole candidacy, not just keyword overlap or recency. Relevance includes technical invention, independent product ownership, commercial adoption, and a demonstrated history of shipping and maintaining software. Inspect all confirmed resume-visible patents and projects before selecting sections. Preserve distinctive competency signals even when their domain or technology does not exactly match the posting. Do not apply the same omission threshold to patents or shipped products as to introductory coursework.
-
-Include a concise Patents section when confirmed inventor/patent facts exist for an engineering role, unless the user explicitly requests otherwise. Use only supported inventor attribution, numbers, titles, dates, and status; absent titles or contribution details are a reason to omit those details, not the entire confirmed patent record. Do not infer that a patent was granted, that the applicant was the sole inventor, or that it proves a particular technical contribution without supporting facts.
-
-Include older shipped projects when they establish the depth or duration of relevant experience. For mobile/app-product roles, retain early mobile releases and other independently shipped commercial apps alongside current work, with a concise bullet per older project if needed. Preserve the actual platform: desktop/Mac products demonstrate native application and product-delivery experience, but must not be described as mobile apps. A dated early release establishes experience dating back to that release, not uninterrupted professional experience in every intervening year. If the user identifies patents or projects as important evidence, include them whenever confirmed and permitted for resume use.
-
-Omit sections and facts that add no meaningful evidence, such as isolated introductory coursework that is immaterial at the applicant's current career level. Do not include Education merely to fill a template. Do not volunteer or emphasize an absent degree or other missing qualification; never imply one exists, and answer explicitly required application questions honestly. Keep meaningful relevant education or training.
-
-Lead with relevant scope, ownership, consequential decisions, and outcomes. Prefer concise, decision-useful metrics over an inventory of operational details. When confirmed before/after values establish a cost reduction, express the result as a conservatively rounded percentage with its scope and appropriate qualifier, rather than reproducing both exact bills. Calculate any stated cost reduction from confirmed source values and cite those values. Do not round upward to inflate an outcome or imply exactness from approximate inputs. Preserve raw figures in the underlying facts; do not change them merely to simplify resume wording. Include migration timing, downtime, and other details only when they strengthen the case rather than burying the result.
-
-Use clear language a general reviewer can understand, with job-specific terms integrated naturally. Preserve chronological accuracy and use reverse-chronological experience. Compress lower-priority descriptions before dropping distinctive evidence; do not force one page or arbitrarily cap the number of projects. Omit unsupported or genuinely irrelevant material rather than padding.
-
-Start each document with the applicant name as an H1, followed by contact information. The resume may place a short, truthful professional headline as H3 between the name and contact line. Use conventional resume sections in the configured order, H2 for section headings, and H3 for roles or projects.
-
-Write a concise, specific cover letter that connects the employer's highest-priority needs to the applicant's strongest relevant evidence using the posting's terminology where truthful. Avoid flattery, generic enthusiasm, internal notes, scores, and unsupported superlatives. Before submitting both drafts, check factual support, broad relevance, natural keyword coverage, and consistency. Audit omitted patents and older shipped projects: ensure you have not removed strong evidence of invention, product ownership, commercial adoption, or the applicant's relevant experience timeline merely because it is older or lacks exact posting keywords.''';
-
-const previousOrderedDocumentGenerationPrompt =
-    '''$previousEvidenceDocumentGenerationPrompt
-
-Order included projects by confirmed start date, most recently started first, not by end date, last update, or relevance. An ongoing project does not outrank a more recently started project merely because it is ongoing. Select projects for relevance first, then apply this start-date ordering. Keep projects with equal or unknown start dates in their existing relative order, placing unknown dates after dated projects. Never invent dates to establish an order.''';
-
-const previousPipelineDocumentGenerationPrompt =
-    '''$previousOrderedDocumentGenerationPrompt
-
-Use a substantive, product-oriented resume with the following presentation, honoring the configured section order and omitting unsupported sections. The summary is a short opening paragraph directly below contact details, without a Summary heading. Establish professional scope and duration where confirmed, core relevant expertise, and a specific connection between the applicant's experience and the employer's product or problem. Avoid a generic job-title-only summary.
-
-For direct_match, use the heading DIRECT MATCH and a small set of strong evidence bullets. Start each with a short bold capability label, followed by a concrete supported match to a priority in this posting. These are a concise navigation aid to the evidence below, not a second generic skills list or unsupported self-ratings. Choose categories for the actual role, not a fixed set of engineering buzzwords.
-
-For skills, use CORE SKILLS and compact grouped paragraphs with bold category labels, such as Backend and data, Product and client, Infrastructure, and Engineering when appropriate. Choose groups and truthful terminology for the role. Keep technologies legible and specific without turning every skill into its own bullet or implying equal depth in every listed tool.
-
-For experience, use PROFESSIONAL EXPERIENCE. Use H3 for each employer and official role, followed by an italic location/date line. Write substantial, distinct accomplishment bullets: what the applicant owned or built, what the system did for its users, the consequential design decision when useful, and the supported outcome or scale. Prefer active, plain-language explanations over compressed buzzwords. Allocate space according to relevant scope; a long, broad role can justify more bullets than a shorter role. Do not retell the same achievement in several bullets. Lead cost-saving claims with the rounded percentage and outcome, not a chronology of migration minutiae.
-
-For projects, use OPEN-SOURCE & INDEPENDENT PRODUCTS when that accurately describes the included work; otherwise use PROJECTS. Give each project an H3 with its name, actual platform/product type, and relevant confirmed stack. Follow with an italic Years Active line and confirmed public project/repository address when available. Describe in a short readable paragraph what the product does, who it helps, and its distinctive capabilities or product-delivery evidence. Do not reduce a meaningful shipped product to a bare name and technology list. Include older relevant products and patents using the evidence rules above, and retain newest-start-date project ordering rather than copying the order of any example.
-
-Use **bold** for short capability/category labels and *italic* for date/location/project metadata lines. Use plain public addresses, not Markdown links. Prefer middle dots between contact details and related metadata. Use a frontmatter subtitle for a truthful professional headline rather than repeating the headline in the opening paragraph. Frontmatter may set document_type, subtitle, footer (matching the applicant name), and page_numbers. Keep its required factual references. CareerShopper controls fonts, margins and colors. For a substantial multi-page resume with a full experience section, use a standalone <!-- pagebreak --> before the projects section to give the products a deliberate new-page start; do not force a mostly blank page in a short resume. Do not copy any reference document's personal claims, technologies, employers, dates or metrics unless confirmed in this applicant's profile.''';
-
-const previousRelevantHistoryDocumentGenerationPrompt =
-    '''$previousOrderedDocumentGenerationPrompt
-
-Use a substantive, product-oriented resume, honoring the configured section order and omitting unsupported sections. Place a short, substantive opening paragraph directly below contact details, without a Summary heading. Establish professional scope and duration where confirmed, relevant expertise, and the connection to this employer's product or problem. Avoid a job-title-only summary.
-
-For direct_match, use DIRECT MATCH and a small set of strong evidence bullets. Start each with a short bold capability label and a concrete supported match to a priority in the posting. Use them to point readers to evidence, not to repeat a generic skills list or unsupported self-ratings. Choose categories for the actual role.
-
-For skills, use CORE SKILLS and compact grouped paragraphs with bold category labels, such as Backend and data, Product and client, Infrastructure, and Engineering when appropriate. Choose truthful terminology for the role. Do not imply equal depth in every listed technology.
-
-For experience, use RELEVANT WORK HISTORY to make clear that this is a selection, not a complete employment ledger. Use reverse-chronological order, H3 for employer and official role, and an italic location/date line. Evaluate older roles for distinctive relevant evidence versus redundancy, distraction, and apparent discontinuity. Omit a marginal older role when stronger recent work or projects already establish the same competence. Keep an older role when its distinctive evidence materially strengthens the application. Do not infer unemployment from missing entries or approximate dates; preserve date precision, never invent months, extend a job, merge distinct employers, or imply uninterrupted employment to hide a gap. Do not discard strong evidence solely because a genuine gap exists. Do not insert explanations of gaps without confirmed support or a request for a complete history.
-
-Write substantial, distinct accomplishment bullets explaining what the applicant owned or built, what it did for users, and the supported outcome or scale. Keep one coherent accomplishment or tightly related causal chain per bullet. Split unrelated accomplishments into separate bullets, each with its own factual references, or omit the lower-value detail. In particular, AI-tool adoption, deployment/CI tooling, and frontend delivery are separate accomplishments unless confirmed evidence establishes a direct relationship. Never append an unrelated achievement with "also" to pack in more keywords. Allocate space by relevant scope, not an arbitrary bullet limit; do not retell the same achievement in several bullets. Lead cost savings with the rounded percentage and outcome.
-
-For projects, use OPEN-SOURCE & INDEPENDENT PRODUCTS when accurate; otherwise PROJECTS. Give each an H3 containing its name, actual platform/product type, and relevant confirmed stack, followed by an italic Years Active line and confirmed public address when available. Lead the description with what the product does and who uses it, then explain distinctive capabilities or delivery evidence. Preserve the actual audience and purpose: being open source, using developer-published packages, or exposing APIs, a CLI, or MCP does not make an end-user application a developer tool. Do not relabel a product to match the target employer. Retain meaningful older products and newest-start-date project ordering; do not reduce a shipped product to a name and technology list.
-
-For patents, itemize each distinct confirmed patent in its own bullet with inventor attribution, patent number, and exact title when confirmed. For identical titles, retain separate entries and include the confirmed classification/category written out in words, not just a code. Preserve the classification system in the underlying facts; do not confuse a classification with a patent kind code, legal status, or the applicant's contribution. Do not invent a distinct category when records share one. If a title or category is missing or pending, flag the missing profile detail to the user outside the document; retain the confirmed patent rather than inventing details or dropping it. Include confirmed dates or status only when useful.
-
-Use **bold** for short labels and *italic* for date/location/project metadata. Use plain public addresses, not Markdown links, and prefer middle dots between contact details. A truthful professional headline may use the frontmatter subtitle. Frontmatter may set document_type, subtitle, footer (matching the applicant name), and page_numbers; retain required factual references. CareerShopper owns fonts, margins, colors, and pagination. Do not insert automatic <!-- pagebreak --> markers between work history and projects or based on estimated document length. Let the renderer move headings with their following content only when the remaining page space requires it. Reserve explicit page breaks for a user's deliberate request, not routine generated resumes. Do not copy a reference document's personal claims unless confirmed in this applicant's profile.''';
-
-const previousCoverLetterDocumentGenerationPrompt =
-    '''$previousRelevantHistoryDocumentGenerationPrompt
-
-For the cover letter, write a focused personal letter, not a second resume or a technical inventory. The resume section and evidence-inventory instructions above apply to the resume; the letter selects a few strong examples rather than repeating every project, patent, skill, or achievement. Aim for roughly 350–450 words of main prose, usually an opening, two or three supporting paragraphs, and a brief close. This is a guide, not a quota: do not pad thin evidence or shrink typography to force one page.
-
-Open with a concrete connection between how the applicant works and this employer's product, customers, or needs. Establish the relevant scope briefly instead of spending a paragraph announcing "I am applying" or reciting the resume summary. Give each supporting paragraph one clear point and use selected evidence to explain why it matters to this employer. Connect professional work and independent products when that provides a genuine customer or user perspective. Preserve actual platforms and product audiences. Do not copy the reference's personal claims or assume the applicant uses the employer's product.
-
-Favor ownership, useful product behavior, outcomes, and engineering judgment over exhaustive implementation details. Retain job-specific terminology where natural and truthful, but leave low-level schema mechanics, test types, retry machinery, tool catalogs, and peripheral qualifications to the resume unless they are central to the posting. Describe a difficult production situation through the decision and result; omit internal departures, account threats, blame, and crisis chronology unless essential to the point. When discussing AI-assisted work, emphasize the applicant's architecture, scoped delegation, review, testing, and accountability where confirmed, rather than merely listing assistants or claiming speed. Use current tool preferences only if confirmed; do not copy them from an example letter.
-
-Use natural first-person prose, a confident factual tone, and varied sentence lengths. Avoid generic enthusiasm, flattery, stock match claims, repeated conclusions, and a final paragraph that re-lists every skill. Close with a short invitation to discuss the specific contribution.
-
-For letter structure, set document_type: cover_letter and use the frontmatter subtitle "[actual listing role] application", making clear this is the role being sought, not an invented past title. Start with the applicant name as H1 and a compact confirmed contact line. Then include the supplied drafting date if available, a recipient block with Hiring Team and the actual employer, and a simple salutation. Never invent a named recipient, postal address, or date. End with "Sincerely," and the applicant's name in separate paragraphs; the signature name may be bold. Keep factual-reference comments on every block and on subtitle frontmatter. The date, recipient, and application subject describe document/job context, not career credentials. Do not add resume section headings, bullet lists, or routine page breaks to the letter. CareerShopper supplies letter-specific typography and omits page numbering by default; set page_numbers only for an explicit user preference.''';
-
-const previousRecruiterReviewDocumentGenerationPrompt =
-    '''$previousCoverLetterDocumentGenerationPrompt
-
-Before submitting BOTH the resume and cover letter, review every selected detail from the perspective of the recruiter and potential employer for this specific role. Ask what hiring decision the detail helps them make: does it credibly demonstrate relevant capability, dependable delivery, sound judgment, collaboration, or a useful business/customer outcome? Then consider whether the wording introduces an avoidable negative signal that outweighs that evidence. This is an editorial assessment of relevance and framing, not a claim that every recruiter interprets a detail the same way.
-
-Do not volunteer that the applicant was the company's "only developer" or "sole developer", including temporary periods, unless the user explicitly requests that context. Convey the confirmed scope of architecture, delivery, and production ownership without emphasizing staffing shortages or professional isolation. Apply the same test to other optional details: internal departures, lack of handoff, organizational instability, account threats, crisis narratives, disparagement of colleagues, or claims to have done everything can distract from competence or invite doubts about collaboration, scale, and engineering discipline. Omit unnecessary adverse context; preserve the supported decision, contribution, and outcome. Do not merely euphemize the same distracting story. When team leadership or collaboration is relevant, use specific confirmed evidence rather than inventing a team to replace a solo-work claim.
-
-Select and phrase evidence to make the employer-relevant value clear without defensive explanations, unsupported self-praise, or keyword-driven overclaiming. Avoid volunteering immaterial shortcomings or introductory credentials that weaken an otherwise strong presentation. This review must not erase distinctive confirmed patents, shipped products, or meaningful experience simply because they are older or not exact keyword matches. Keep underlying career facts unchanged. Truthfulness remains mandatory: do not fabricate team size, employer scale, dates, qualifications, continuity, responsibilities, or results, remove qualifications needed for a claim to remain accurate, or conceal information expressly required by the application. Answer direct factual questions honestly. Improve selection and wording, not the facts; keep this reviewer-risk assessment out of the documents themselves.''';
-
-const previousTargetRoleDocumentGenerationPrompt =
-    '''$previousRecruiterReviewDocumentGenerationPrompt
-
-Set the resume's frontmatter subtitle (the role headline beneath the applicant's name) to the role being sought, not the applicant's current or most senior past title. Read the posting's responsibilities to identify its actual function and specialization rather than copying its title mechanically. Use a concise conventional role name: "Software Engineer IV" becomes "Software Engineer"; "Software Developer II" becomes "Software Developer". Remove employer-specific grades, Roman numerals, requisition codes, location tags, and recruiting suffixes. Do not translate an internal grade into an inferred Senior, Staff, Principal, or Architect title. Retain meaningful functional scope such as Backend, Frontend, or Mobile when central to the posting, and explicit conventional seniority when it genuinely describes the target role rather than an opaque internal level.
-
-For a job opening, use its target function for the resume headline while preserving saved work-history titles. Frame the opening summary around the target function with confirmed supporting experience; do not undo the headline alignment by opening with an unrelated current-role label. The headline is application positioning, not a claim that the applicant already holds that job or has unsupported credentials. Keep official employer/role titles unchanged in work history, keep the applicant name as H1, and retain the required subtitle factual references. This normalization applies to the resume headline, not to the saved job title or exact role identification in application correspondence.''';
-
-const previousCompactPatentDocumentGenerationPrompt =
-    '''$previousTargetRoleDocumentGenerationPrompt
-
-Override the earlier inventor-attribution instruction: present each patent as one compact bullet using "U.S. Patent No. <number> [Class <code> - <spelled-out category>] <exact title> (<Month YYYY>)" for confirmed U.S. patents. Omit applicant/co-inventor names, assignees, grant days, and classification-system boilerplate. Use each patent's own confirmed classification and grant date; never borrow another patent's category to distinguish titles. Omit unavailable components rather than inventing them. Retain separate bullets for distinct patents, even with identical titles, and the required factual-reference comments.''';
-
-// Voice and evidence-selection guidance live in assets/writing-style.md and the
-// user's editable writing-style.md. This prompt controls document structure.
-const _documentOpening =
-    '''Write a tailored resume and cover letter using the separately supplied shared writing style. The shared style governs voice, terminology, evidence selection, and recruiter-facing framing; the instructions here govern document structure. Use only current confirmed facts and retain the required factual references.
-
-Start each document with the applicant name as H1 and compact confirmed contact information. Use commas or middle dots, not pipe characters, between contact details. Frontmatter may contain only document_type, subtitle, footer (the exact applicant name), and page_numbers. Cite subtitle frontmatter. Use H2 for sections, H3 for roles/projects, bold for short labels, and italic for location/date metadata. Use plain public addresses. CareerShopper owns fonts, margins, colors, and pagination.
-
-''';
-
-const _sectionsBeforeProjects = '''
-
-Honor the configured section order and omit empty or genuinely irrelevant sections. Put a substantive opening paragraph below contact details without a Summary heading. For direct_match, use DIRECT MATCH and a few bold-labeled evidence bullets tied to this posting. For skills, use CORE SKILLS and compact grouped paragraphs, not a bullet for every technology or implied equal proficiency.
-
-For experience, use RELEVANT WORK HISTORY, reverse-chronological roles, H3 employer/official title, and an italic location/date line. This is a selection, not a complete employment ledger. Weigh marginal older entries against distinctive evidence and apparent discontinuity; preserve date precision and never fabricate continuity. Keep one coherent accomplishment per bullet and split unrelated achievements. AI-tool adoption, Python CI tooling, and frontend delivery are separate accomplishments unless evidence establishes a causal link. Allocate space by relevant scope, not arbitrary bullet counts.
-
-''';
-
-const _previousProjectSection =
-    '''For projects, use OPEN-SOURCE & INDEPENDENT PRODUCTS when accurate, otherwise PROJECTS. Give each an H3 with name, actual product/platform type, and relevant confirmed stack, then an italic Years Active line and public address when available. Describe what it does, who uses it, and distinctive capabilities. Order selected projects by confirmed start date, most recently started first; preserve relative order for equal dates and put unknown dates last. Retain meaningful older shipped products and confirmed patents as competency signals. Do not force one page or omit evidence solely for age or imperfect keyword overlap. Do not include introductory coursework or Education merely to fill a template.''';
-
-const _previousBoldStackProjectSection =
-    '''For projects, use OPEN-SOURCE & INDEPENDENT PRODUCTS when accurate, otherwise PROJECTS. Give each an H3 containing only the project name and relevant confirmed technology stack. Do not put a product description, purpose, audience, or platform/product-type label in the heading. Follow with an italic Years Active line and public address when available. In the summary paragraph below, describe what the product is, what it does, who uses it, and its distinctive capabilities. Order selected projects by confirmed start date, most recently started first; preserve relative order for equal dates and put unknown dates last. Retain meaningful older shipped products and confirmed patents as competency signals. Do not force one page or omit evidence solely for age or imperfect keyword overlap. Do not include introductory coursework or Education merely to fill a template.''';
-
-const _projectSection =
-    '''For projects, use OPEN-SOURCE & INDEPENDENT PRODUCTS when accurate, otherwise PROJECTS. Give each an H3 containing only the project name and relevant confirmed technology stack. Use exactly this heading structure: ### **Project Name** · Technology, Technology. Bold only the project name; keep the spaced middle dot separator and comma-separated stack in regular weight. If no stack is confirmed, use ### **Project Name** without a separator. Do not put a product description, purpose, audience, or platform/product-type label in the heading. Follow with an italic Years Active line and public address when available. In the summary paragraph below, describe what the product is, what it does, who uses it, and its distinctive capabilities. Order selected projects by confirmed start date, most recently started first; preserve relative order for equal dates and put unknown dates last. Retain meaningful older shipped products and confirmed patents as competency signals. Do not force one page or omit evidence solely for age or imperfect keyword overlap. Do not include introductory coursework or Education merely to fill a template.''';
-
-const _sectionsAfterProjects =
-    '''\n\nFor patents, itemize each distinct confirmed patent in its own compact bullet: "U.S. Patent No. <number> [Class <code> - <spelled-out category>] <exact title> (<Month YYYY>)". Omit applicant/co-inventor names, assignees, grant days, and classification boilerplate. Use each patent's own confirmed classification and grant date. Keep distinct patents separate even when titles match; omit unavailable components rather than inventing or dropping the whole patent. Retain factual-reference comments.
-
-Do not add routine page breaks between work history and projects or based on estimated length. The renderer keeps headings and role/project metadata with following content. Use explicit <!-- pagebreak --> only when the user deliberately requests it.
-
-For the cover letter, write a focused personal letter, not a second resume. Aim for roughly 350–450 words of main prose without padding or shrinking text to force one page. Use an opening, two or three supporting paragraphs, and a brief close. Connect how the applicant works to this employer's product or needs. Select a few strong examples; resume evidence-inventory and section rules do not apply to the letter. Favor ownership, product behavior, outcomes, and judgment over implementation inventories. Close with a short invitation to discuss a specific contribution, not a repeated skills list.
-
-Set document_type: cover_letter and subtitle to "[actual listing role] application". After the name and contact line, include the supplied drafting date, a Hiring Team/actual employer recipient block, and a simple salutation. Never invent a date, address, or recipient. End with "Sincerely," and the applicant name in separate paragraphs. Do not add resume sections, bullet lists, or routine page breaks. Letter typography and default absence of page numbers are controlled by CareerShopper. Cite each factual block and subtitle; no source IDs in visible prose.''';
-
-const _previousDocumentSections =
-    '$_sectionsBeforeProjects$_previousProjectSection$_sectionsAfterProjects';
-
-const _documentSections =
-    '$_sectionsBeforeProjects$_projectSection$_sectionsAfterProjects';
-
-// Retained to recognize the untouched default that kept headline specialties.
-const previousSpecializedHeadlineDocumentGenerationPrompt =
-    '''${_documentOpening}Resume headline: Read the posting's responsibilities and use its actual target function and specialization, not the applicant's current or most senior title. "Software Engineer IV" becomes "Software Engineer"; "Software Developer II" becomes "Software Developer". Remove internal grades, requisition codes, and location tags. Do not infer Senior, Staff, Principal, or Architect from an internal grade. Retain explicit conventional seniority and meaningful specialization when appropriate to the target role. Keep official employer/role titles unchanged in work history. Put the target headline in subtitle frontmatter; the opening summary should support that function rather than relabeling the applicant with an unrelated current role.$_previousDocumentSections''';
-
-const _resumeHeadline =
-    '''Resume headline: Read the posting's responsibilities and use a broad occupational role with explicit conventional seniority, not the exact listing title or the applicant's current or most senior title. "Senior Software Engineer, Infrastructure" becomes "Senior Software Engineer"; "Staff Software Engineer - Developer Platform" becomes "Staff Software Engineer"; "Senior Backend Software Engineer" becomes "Senior Software Engineer". Omit team, department, product, technology, and specialty qualifiers wherever they appear. Keep occupational role names intact, such as "Site Reliability Engineer" or "Engineering Manager". "Software Engineer IV" becomes "Software Engineer"; "Software Developer II" becomes "Software Developer". Remove internal grades, requisition codes, and location tags. Do not infer Senior, Staff, Principal, or Architect from an internal grade. Put specialization in the summary, skills, and evidence instead of the headline. Keep official employer/role titles unchanged in work history. Put the general target headline in subtitle frontmatter; the opening summary should support that function rather than relabeling the applicant with an unrelated current role. This normalization is for the resume headline only; cover letters may identify the exact listing role.''';
-
-// Retained to upgrade untouched defaults that described products in headings.
-const previousDescriptiveProjectHeadingDocumentGenerationPrompt =
-    '$_documentOpening$_resumeHeadline$_previousDocumentSections';
-
-// Retained to upgrade the name-and-stack default before mixed heading weights.
-const previousBoldProjectStackDocumentGenerationPrompt =
-    '$_documentOpening$_resumeHeadline$_sectionsBeforeProjects$_previousBoldStackProjectSection$_sectionsAfterProjects';
-
-// Retained to upgrade untouched prompts from AI-authored Markdown generation.
-const previousMarkdownDocumentGenerationPrompt =
-    '$_documentOpening$_resumeHeadline$_documentSections';
-
-const previousStructuredDocumentGenerationPrompt =
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
+
+// Recognize untouched historical defaults without retaining their prose.
+// Whitespace normalization matches the original upgrade behavior.
+bool isPreviousDocumentGenerationPrompt(String prompt) {
+  final normalized = prompt.replaceAll(RegExp(r'\s+'), ' ').trim();
+  return _previousPromptFingerprints.contains(
+    sha256.convert(utf8.encode(normalized)).toString(),
+  );
+}
+
+const _previousPromptFingerprints = {
+  '4e5deeec43da2a105d7c1470c956a2b83008cc757bd1c14ccbdc94fca15537ac',
+  'cdf64b0fbd0cb7d6e196c363ab63da11a0d60bbce0527fb94456f955baf36b57',
+  '0650fb12a9bd2b5b0b66c08957f7be6f82be8c9d6a1ab891f723a1031e213c8c',
+  'be79b3f1e18b9be4dd38fc35fe57798daeaebcdbfcaeb5153ce6590201c8de0f',
+  '0640d29be0f70a489e80d07000ff5bc5b1508eb39f4bc3016b64d66e88d45125',
+  '430af3af8c8f72f813efa3ec51f65631b3f4c7b42bb897764a768c5ce76d84a6',
+  '77bd82b59816b0fe18e48ecf611f795448aa91e3968a3f52e437304a87a4c279',
+  'f9cdc6995afb9d503e60ba1c36b48ffef6b46b6ee6eb6188ef422396ff3ffddf',
+  '0c618d97d31c528c0c40956bfde501b0624ab341f39ac6548efd6b72fa949257',
+  '7a82ade37fd12543692377e17c915f0560ec084c1fc0da400d546c79a7b17df8',
+  'b04d543f4d5122eb67644d354b3ac7e06dc044cd23b350574702b1c3c15b0c5e',
+  '421e4c8e71f41061c1984ada2444b8b52caa95b05761ceaee257b8215aac19be',
+  '0ecc3b769d4f43bc0af1760500d579b60b4cd4b8fe8ba29fa8d1a34eb7f175eb',
+  'e2869ff076e3562675b10a971410633fd55d5e20ae8933babb24bb0b1967844e',
+  'e0462d42f606406c3954db463fa36ce232cd509aee025c8dac827b5673fa2d59',
+};
+
+const defaultDocumentGenerationPrompt =
     '''Tailor the resume and cover letter to the job using enabled saved Resume content and the separately supplied shared writing style. Use the posting's terminology when it accurately describes supported experience; never invent qualifications, metrics or equivalences.
 
 Supply structured resume_plan and cover_letter_plan. Select fixed evidence and cite generated prose with the same short IDs from generation_content. CareerShopper owns Markdown, citation comments, headings, exact saved wording, layout and rendering. Do not author complete Markdown documents or copy revision UUIDs. Required bullets, prerequisite chains, title coverage and saved order are handled by the assembler.
@@ -197,9 +42,6 @@ Choose work-history achievements and optional project details for relevant scope
 
 For the cover letter, write a focused personal letter, not a second resume. Aim for roughly 350–450 words of main prose without padding or shrinking text to force one page. Use an opening, two or three supporting paragraphs and a brief close. Connect how the applicant works to this employer's needs using a few strong supported examples. Favor ownership, product behavior, outcomes and judgment over implementation inventories. End the body with a short invitation to discuss a specific contribution. CareerShopper supplies the applicant header, date, recipient block, salutation and signoff; write only the body paragraphs.
 
-Check every generated claim against its selected evidence, including employer attribution, scope, dates and causality. Recruiter feedback is advisory and cannot authorize invented claims or changes to fixed wording. Do not disclose disabled or private content, pad unsupported text, include scores or internal notes, or direct automated reviewers how to rank the applicant.''';
-
-const defaultDocumentGenerationPrompt =
-    '''$previousStructuredDocumentGenerationPrompt
+Check every generated claim against its selected evidence, including employer attribution, scope, dates and causality. Recruiter feedback is advisory and cannot authorize invented claims or changes to fixed wording. Do not disclose disabled or private content, pad unsupported text, include scores or internal notes, or direct automated reviewers how to rank the applicant.
 
 Before drafting, understand the employer's products, customers, industry and purpose. Research its official pages when the listing lacks that context, keeping sources in the working transcript. For the cover letter, actively look for a supported human or domain connection in saved experience, projects, interests and credentials. When one matters to this company and role, make it central to the opening or a supporting paragraph and explain the useful perspective it brings. Pair that connection with concrete evidence of delivery; do not write a stack inventory with a company name attached. Personal context is evidence for natural, selective prose, not an extra resume section. Do not invent enthusiasm, product use or credentials, overstate an interest as professional expertise, or force an unrelated connection. If no meaningful personal connection is supported, lead with relevant work instead.''';

@@ -147,10 +147,7 @@ void main() {
       final filled = await tools.call('resume_compose', {
         'resume_plan': missingTitleEvidence,
       });
-      expect(
-        filled['resume_markdown'],
-        contains('Added automated checks.'),
-      );
+      expect(filled['resume_markdown'], contains('Added automated checks.'));
       final historyResume = await tools.call('resume_compose', {
         'resume_plan': fixture.structuredPlan(),
       });
@@ -319,7 +316,9 @@ void main() {
     final tools = McpUiTools(db);
     final content =
         jsonDecode(jsonEncode(fixture.fixedContent())) as Map<String, dynamic>;
-    content['experience'][0]['achievements'][1]['requires'] = ['search-achievement'];
+    content['experience'][0]['achievements'][1]['requires'] = [
+      'search-achievement',
+    ];
     final saved = await tools.call('resume_content_save', {
       'content': content,
       'confirmed': true,
@@ -336,7 +335,10 @@ void main() {
     final closed = await tools.call('resume_compose', {
       'resume_plan': selected,
     });
-    expect(closed['resume_markdown'], contains('Implemented a search feature.'));
+    expect(
+      closed['resume_markdown'],
+      contains('Implemented a search feature.'),
+    );
     selected['selected_ids'] = ['F2'];
     await tools.call('resume_compose', {'resume_plan': selected});
     fetched['experience'][0]['titles'][0]['achievements'][1]['requires'] = [

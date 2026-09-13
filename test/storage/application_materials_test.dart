@@ -672,55 +672,48 @@ void main() {
     await expectLater(materials.validate(markdown, markdown), throwsStateError);
   });
 
-  test(
-    'generation receives the upgraded saved project-heading instructions',
-    () async {
-      final templates = DocumentTemplateRepository(db);
-      await templates.ensureDefaults();
-      await templates.saveResumeTemplate(
-        ResumeTemplateDraft(
-          id: defaultResumeTemplateId,
-          name: 'Pipeline Classic',
-          settings: ResumeTemplateSettings.fromJson({
-            ...ResumeTemplateSettings.defaults().toJson(),
-            'generation_prompt': File(
-              'test/fixtures/document-prompt-descriptive-project-headings.txt',
-            ).readAsStringSync(),
-          }),
-        ),
-      );
-      final runner = _Runner();
-      final harness = _harness(db, runner: runner);
-      await harness.saveProfile(
-        const AiHarnessProfileDraft(
-          name: 'Test',
-          executable: '/bin/true',
-          arguments: [],
-        ),
-      );
-      await harness.queueApplication(jobId);
-      await runner.started.future;
-      expect(runner.request!.prompt, contains(defaultDocumentGenerationPrompt));
-      expect(runner.request!.prompt, contains(companyContextInstructions));
-      expect(
-        runner.request!.prompt,
-        contains('available read-only web or browser tools'),
-      );
-      expect(
-        runner.request!.prompt,
-        isNot(contains('name, actual product/platform type')),
-      );
-      final read = await McpUiTools(db).call('document_template_get', {});
-      expect(
-        (read['settings'] as Map)['generation_prompt'],
-        defaultDocumentGenerationPrompt,
-      );
-      runner.finished.complete();
-      await harness
-          .watchMaterialStatus(jobId)
-          .firstWhere((status) => status == 'failed');
-    },
-  );
+  test('generation receives the upgraded saved instructions', () async {
+    final templates = DocumentTemplateRepository(db);
+    await templates.ensureDefaults();
+    await templates.saveResumeTemplate(
+      ResumeTemplateDraft(
+        id: defaultResumeTemplateId,
+        name: 'Pipeline Classic',
+        settings: ResumeTemplateSettings.fromJson({
+          ...ResumeTemplateSettings.defaults().toJson(),
+          'generation_prompt': File(
+            'test/fixtures/legacy_document_prompt.txt',
+          ).readAsStringSync(),
+        }),
+      ),
+    );
+    final runner = _Runner();
+    final harness = _harness(db, runner: runner);
+    await harness.saveProfile(
+      const AiHarnessProfileDraft(
+        name: 'Test',
+        executable: '/bin/true',
+        arguments: [],
+      ),
+    );
+    await harness.queueApplication(jobId);
+    await runner.started.future;
+    expect(runner.request!.prompt, contains(defaultDocumentGenerationPrompt));
+    expect(runner.request!.prompt, contains(companyContextInstructions));
+    expect(
+      runner.request!.prompt,
+      contains('available read-only web or browser tools'),
+    );
+    final read = await McpUiTools(db).call('document_template_get', {});
+    expect(
+      (read['settings'] as Map)['generation_prompt'],
+      defaultDocumentGenerationPrompt,
+    );
+    runner.finished.complete();
+    await harness
+        .watchMaterialStatus(jobId)
+        .firstWhere((status) => status == 'failed');
+  });
 
   test(
     'queue generates scoped drafts, review stays separate from applying, regeneration preserves old drafts',

@@ -160,6 +160,12 @@ portable Agent Plugin, and CareerShopper Skill. The default locations are:
 - Application bundle: `$HOME/.local/lib/careershopper`
 - Command-line launcher: `$HOME/.local/bin/careershopper`
 - Desktop entry: `$HOME/.local/share/applications/com.example.careershopper.desktop`
+
+The Linux application ID identifies the launcher and running application, not
+the data directory. Renaming it does not move the database, profiles, or bundled
+assets. The installer removes prior launchers only when they carry its ownership
+marker and point to the same executable. Quit an older running version before
+launching the updated app; desktop favorites may need to be pinned again.
 - Agent Plugin: `$HOME/.local/share/careershopper/agent-plugin`
 - Shared Skill: `$HOME/.agents/skills/careershopper`
 

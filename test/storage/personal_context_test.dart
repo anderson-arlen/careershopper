@@ -19,8 +19,7 @@ void main() {
             'id': 'gardening',
             'enabled': true,
             'topic': 'Gardening',
-            'text':
-                'I volunteer in a community garden.',
+            'text': 'I volunteer in a community garden.',
           },
           {
             'id': 'private',

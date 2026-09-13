@@ -243,28 +243,9 @@ class DocumentTemplateRepository implements DocumentTemplateStore {
       var settings = ResumeTemplateSettings.fromJson(
         _decodeObject(existing.settingsJson),
       );
-      // Historical releases differed in paragraph spacing and line endings.
-      // Compare words, preserving any actual edits to the user's instructions.
-      String promptText(String value) =>
-          value.replaceAll(RegExp(r'\s+'), ' ').trim();
-      final savedPromptText = promptText(settings.generationPrompt);
-      final oldPrompt = const [
-        previousDefaultDocumentGenerationPrompt,
-        previousAtsDocumentGenerationPrompt,
-        previousEvidenceDocumentGenerationPrompt,
-        previousOrderedDocumentGenerationPrompt,
-        previousPipelineDocumentGenerationPrompt,
-        previousRelevantHistoryDocumentGenerationPrompt,
-        previousCoverLetterDocumentGenerationPrompt,
-        previousRecruiterReviewDocumentGenerationPrompt,
-        previousTargetRoleDocumentGenerationPrompt,
-        previousCompactPatentDocumentGenerationPrompt,
-        previousSpecializedHeadlineDocumentGenerationPrompt,
-        previousDescriptiveProjectHeadingDocumentGenerationPrompt,
-        previousBoldProjectStackDocumentGenerationPrompt,
-        previousMarkdownDocumentGenerationPrompt,
-        previousStructuredDocumentGenerationPrompt,
-      ].any((previous) => promptText(previous) == savedPromptText);
+      final oldPrompt = isPreviousDocumentGenerationPrompt(
+        settings.generationPrompt,
+      );
       if (oldPrompt) {
         settings = ResumeTemplateSettings.fromJson({
           ...settings.toJson(),

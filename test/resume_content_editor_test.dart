@@ -247,7 +247,9 @@ void main() {
             .onPressed,
         isNull,
       );
-      await tapVisible(find.byKey(const ValueKey('achievement-select-search-achievement')));
+      await tapVisible(
+        find.byKey(const ValueKey('achievement-select-search-achievement')),
+      );
       expect(
         find.byKey(const ValueKey('achievement-link-search-achievement')),
         findsOneWidget,
@@ -271,7 +273,10 @@ void main() {
       // Wording edits leave saved links intact and no longer duplicate bullets.
       await tapVisible(find.byTooltip('Edit achievement').at(1));
       expect(find.text('Requires other achievements'), findsNothing);
-      expect(find.byKey(const ValueKey('requires-search-achievement')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('requires-search-achievement')),
+        findsNothing,
+      );
       await tester.tap(find.text('Use wording'));
       await tester.pumpAndSettle();
       await tapVisible(find.byTooltip('Remove achievement').first);
@@ -283,7 +288,9 @@ void main() {
       await tester.tap(find.text('Close'));
       await tester.pumpAndSettle();
       await tapVisible(find.byKey(const ValueKey('achievement-link-ci')));
-      await tapVisible(find.byKey(const ValueKey('achievement-select-search-achievement')));
+      await tapVisible(
+        find.byKey(const ValueKey('achievement-select-search-achievement')),
+      );
       await tester.tap(find.text('Done linking'));
       await tester.pumpAndSettle();
       await tapVisible(find.byTooltip('Remove achievement').first);
@@ -367,7 +374,11 @@ void main() {
         tester.getTopLeft(find.byKey(const ValueKey('achievement-drop-ci'))).dy,
         lessThan(
           tester
-              .getTopLeft(find.byKey(const ValueKey('achievement-drop-search-achievement')))
+              .getTopLeft(
+                find.byKey(
+                  const ValueKey('achievement-drop-search-achievement'),
+                ),
+              )
               .dy,
         ),
       );

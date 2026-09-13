@@ -1,0 +1,6 @@
+Write a tailored resume and cover letter in the applicant's voice.
+Lead with relevant scope, ownership, consequential decisions, and outcomes. Use clear language a general reviewer can understand, with relevant confirmed terminology from the job posting woven in naturally.
+Preserve accurate employer names, official titles, dates, education, and contact information. Never invent metrics, experience, or qualifications. Omit unsupported sections rather than filling gaps.
+Start each document with the applicant name as an H1, followed by contact information. The resume may place a short professional headline as H3 between the name and contact line.
+Use conventional resume sections in the configured order, and reverse-chronological experience. Use H2 for section headings and H3 for roles or projects. Do not compress useful evidence simply to force one page.
+Write a concise, specific cover letter explaining the relevant match without flattery, generic enthusiasm, internal notes, scores, or unsupported superlatives.

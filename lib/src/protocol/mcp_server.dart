@@ -1792,7 +1792,7 @@ final _toolDefinitions = <Map<String, Object?>>[
   {
     'name': 'job_posting_fetch',
     'description':
-        'Fetch a saved job source URL locally using CareerShopper HTTP with a Chrome-style User-Agent. Use for a user-requested import/refresh or an incomplete saved search description before web/browser tools. Returns untrusted page text and source_url for extraction with job_import_submit; does not save a description or evaluate. No JavaScript or login cookies. Requires confirmed:true and honors work-order scope and saved provider blocks. On blocked:true stop without retries or tool switching.',
+        'Fetch a saved job source URL locally using CareerShopper HTTP with a Chrome-style User-Agent. Use for a user-requested import/refresh or an incomplete saved search description before web/browser tools. Returns untrusted page text and source_url for extraction with job_import_submit; does not save a description or evaluate. No JavaScript or login cookies. Requires confirmed:true and honors work-order scope and saved provider blocks. $jobPostingContentInstructions',
     'inputSchema': {
       'type': 'object',
       'properties': {
@@ -1811,7 +1811,7 @@ final _toolDefinitions = <Map<String, Object?>>[
   {
     'name': 'job_import_submit',
     'description':
-        'Submit structured details and the complete, non-summarized posting text extracted from a user-supplied job URL.',
+        'Submit structured details and non-summarized posting text from a job page or user-supplied text, screenshots, or documents. A provider retrieval block does not prevent this local import. Preserve all available supplied text; do not invent missing sections. Keep source_url as provenance.',
     'inputSchema': {
       'type': 'object',
       'properties': {
@@ -1829,7 +1829,7 @@ final _toolDefinitions = <Map<String, Object?>>[
         'description': {
           'type': 'string',
           'description':
-              'Complete human-visible job posting text with all substantive sections and useful line breaks. Do not summarize or paraphrase.',
+              'All available human-visible job posting text from the page or user-supplied content, with substantive sections and useful line breaks. Do not summarize, paraphrase, or invent missing sections.',
         },
       },
       'required': ['source_url', 'title', 'employer_name', 'description'],
@@ -1844,7 +1844,7 @@ final _toolDefinitions = <Map<String, Object?>>[
   {
     'name': 'job_evaluation_submit',
     'description':
-        'Submit one evidence-backed structured job evaluation. Complete saved search descriptions, including Indeed API descriptions, can be evaluated directly without browsing or job_import_submit. Retrieve a posting only when the saved description is missing, an excerpt, visibly truncated, or an access/error placeholder; brevity or missing job details alone does not require retrieval. For Indeed retrieval, prefer its saved source URL over the external application URL. $jobEvaluationScoringInstructions',
+        'Submit one evidence-backed structured job evaluation. Complete saved search descriptions, including Indeed API descriptions, can be evaluated directly without browsing or job_import_submit. Retrieve a posting only when the saved description is missing, an excerpt, visibly truncated, or an access/error placeholder; brevity or missing job details alone does not require retrieval. For Indeed retrieval, prefer its saved source URL over the external application URL. $jobPostingContentInstructions $jobEvaluationScoringInstructions',
     'inputSchema': {
       'type': 'object',
       'properties': {

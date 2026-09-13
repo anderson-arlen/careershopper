@@ -64,3 +64,10 @@ must be extracted into `job_import_submit` before evaluation. Script references
 to CAPTCHA libraries do not alone establish a challenge; explicit denial or
 challenge text still stops retrieval. Posting fetches share saved host blocks
 with availability checks, and record new blocks locally without retrying.
+
+Provider blocks restrict retrieval, not local processing. Users can supply posting
+text, screenshots, or documents after a block; import and evaluation may continue
+from that content without further page, company, or logo requests. Keep the saved
+block, source URL provenance, and explicit content limitations. Missing details
+remain unknown; do not fabricate a complete posting. User-blocked employers
+remain excluded from evaluation.

@@ -141,7 +141,7 @@ Short or vague postings do not require retrieval just because details are absent
 When retrieval is needed for Indeed, the desktop prompt uses the saved Indeed
 source URL rather than the external application URL, which remains saved for applying.
 Desktop import/refresh and incomplete-search workflows use `job_posting_fetch`
-first, also available to MCP callers. The shared listing service retrieves the
+first when retrieval is needed, also available to MCP callers. The shared listing service retrieves the
 saved source URL with Dart HTTP and a Chrome-style User-Agent, strips script and
 navigation content, and returns untrusted page text for `job_import_submit`.
 The fetch itself does not change the saved description, evaluation, review, or
@@ -152,6 +152,13 @@ skip retrieval. Explicit access denial, authentication, CAPTCHA, or rate limits
 stop requests to that host until the user clears the saved block. Block checks
 are shared with listing availability checks; a generic retrieval failure does
 not itself establish a block. No JavaScript execution or browser cookies are used.
+Initial and resumed import/search ACP turns and MCP descriptions distinguish
+provider retrieval blocks from user employer blocks. User-supplied text, screenshots,
+or documents can be imported with `job_import_submit` and evaluated with
+`job_evaluation_submit` after a provider block, without additional page, company,
+or logo retrieval. Source provenance and content limitations are retained; missing
+details remain unknown. This does not clear the provider block or permit evaluation
+of user-blocked employers.
 Explicit Refresh & reanalyze and document-generation availability checks still fetch
 the listing. Search evaluation does not fetch logos as a prerequisite to scoring.
 Desktop import/search prompts and the MCP evaluation contract share the same

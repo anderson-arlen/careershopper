@@ -465,8 +465,15 @@ void main() {
     expect(preferences['minimum_compensation'], 150000);
   });
 
-  for (final mode in ['manual', 'search_missing', 'search_saved']) {
-    final searchBatch = mode != 'manual';
+  for (final mode in [
+    'manual',
+    'search_missing',
+    'search_saved',
+    'manual_blocked',
+    'search_blocked',
+  ]) {
+    final searchBatch = mode.startsWith('search');
+    final providerBlocked = mode.endsWith('_blocked');
     final savedDescription = mode == 'search_saved';
     test('scoped evaluation completes work ($mode)', () async {
       final jobs = JobRepository(database);
@@ -500,6 +507,26 @@ void main() {
             observedAt: DateTime.now().toUtc(),
           ),
         );
+      }
+      var requests = 0;
+      final listings = ListingAvailabilityService(
+        database,
+        clientFactory: () => MockClient((request) async {
+          requests++;
+          expect(
+            savedDescription,
+            false,
+            reason: 'Complete saved descriptions do not need retrieval.',
+          );
+          expect(request.url.toString(), 'https://jobs.example.test/roles/42');
+          return providerBlocked
+              ? http.Response('Forbidden', 403)
+              : http.Response('<main>Build reliable platforms.</main>', 200);
+        }),
+      );
+      if (providerBlocked) {
+        expect((await listings.fetchPosting(jobId))['blocked'], true);
+        expect(requests, 1);
       }
       final snapshotsBefore = await database
           .select(database.jobSnapshots)
@@ -567,26 +594,27 @@ void main() {
           },
         ],
         workOrderId: workOrderId,
-        listings: ListingAvailabilityService(
-          database,
-          clientFactory: () => MockClient((request) async {
-            expect(
-              savedDescription,
-              false,
-              reason: 'Complete saved descriptions do not need retrieval.',
-            );
-            expect(
-              request.url.toString(),
-              'https://jobs.example.test/roles/42',
-            );
-            return http.Response('<main>Build reliable platforms.</main>', 200);
-          }),
-        ),
+        listings: listings,
       );
 
       expect(responses, everyElement(isNot(contains('error'))));
+      if (providerBlocked) {
+        final fetch = responses.first['result'] as Map;
+        expect(fetch['isError'], true);
+        expect(fetch['structuredContent'], containsPair('blocked', true));
+        expect(fetch['structuredContent'], containsPair('request_sent', false));
+        // Import and evaluation do not clear the block or send another request.
+        expect((await listings.fetchPosting(jobId))['request_sent'], false);
+        expect(requests, 1);
+        expect(
+          (await jobs.getJob(jobId))!.description,
+          'Build reliable platforms.',
+        );
+      }
       expect(
-        responses.map((response) => (response['result'] as Map)['isError']),
+        responses
+            .skip(providerBlocked ? 1 : 0)
+            .map((response) => (response['result'] as Map)['isError']),
         everyElement(false),
       );
       final order = await database.select(database.aiWorkOrders).getSingle();

@@ -1108,12 +1108,7 @@ void main() {
         expect(request.jobUrl, source.toString());
         expect(request.prompt, contains('Call `job_posting_fetch`'));
         expect(request.prompt, contains('with `confirmed: true`'));
-        expect(
-          request.prompt,
-          contains(
-            'If `blocked: true`, stop without retries or switching tools',
-          ),
-        );
+        expect(request.prompt, contains(jobPostingContentInstructions));
         if (fromSearch) {
           expect(request.prompt, contains('skip steps 2 through 4'));
         }
@@ -1124,6 +1119,32 @@ void main() {
           (rows) => rows.every(
             (row) => row.status != 'running' && row.status != 'queued',
           ),
+        );
+        final image = ChatImage.fromBytes(
+          await File('test/fixtures/chat-image.png').readAsBytes(),
+        );
+        await request.onSessionStarted!('blocked-import-session');
+        await harnesses.sendMessage(
+          request.workOrderId,
+          'Use this screenshot and summary; do not load the URL again.',
+          images: [image],
+        );
+        await _waitFor(() => runner.requests.length == 2);
+        final resumed = runner.requests.last;
+        expect(resumed.existingSessionId, 'blocked-import-session');
+        expect(resumed.images.single.bytes, image.bytes);
+        expect(resumed.prompt, contains(jobPostingContentInstructions));
+        expect(resumed.prompt, contains('supersedes any earlier instruction'));
+        expect(resumed.prompt, contains('Use this screenshot and summary'));
+        expect(resumed.prompt, contains(request.workOrderId));
+        expect(resumed.scopedMcp, true);
+        expect(
+          (await database.select(database.aiWorkItems).getSingle()).status,
+          'running',
+        );
+        runner.complete(1);
+        await harnesses.watchConversations().firstWhere(
+          (rows) => rows.every((row) => row.status == 'failed'),
         );
       },
     );

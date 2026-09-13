@@ -96,6 +96,7 @@ void main() {
       await scheduler.tick(now: now);
       expect(requests, 1);
       expect(harness.analyzed, hasLength(1));
+      expect(harness.analyzedSearchId, id);
       final row = await database.select(database.savedSearches).getSingle();
       expect(row.nextScheduledAt?.toUtc(), DateTime(2026, 9, 13, 9).toUtc());
       expect(row.lastScheduleError, isNull);
@@ -188,6 +189,7 @@ void main() {
 class _Harness implements AiHarnessStore {
   bool configured = true;
   final analyzed = <String>[];
+  String? analyzedSearchId;
   @override
   Stream<List<AiHarnessProfile>> watchProfiles() => Stream.value([
     if (configured)
@@ -202,7 +204,11 @@ class _Harness implements AiHarnessStore {
       ),
   ]);
   @override
-  Future<int> dispatchSearchAnalysis(List<String> ids) async {
+  Future<int> dispatchSearchAnalysis(
+    List<String> ids, {
+    String? savedSearchId,
+  }) async {
+    analyzedSearchId = savedSearchId;
     analyzed.addAll(ids);
     return ids.length;
   }

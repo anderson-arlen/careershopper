@@ -540,6 +540,7 @@ void main() {
         workOrderId = (await harnesses.dispatchManualImport(jobId)).workOrderId;
       }
 
+      await runner.started.future;
       final responses = await _exchange(
         database,
         [
@@ -667,9 +668,13 @@ void main() {
 
 class _PendingAcpRunner implements AcpAgentRunner {
   final Completer<void> pending = Completer<void>();
+  final Completer<void> started = Completer<void>();
 
   @override
-  Future<void> run(AcpRunRequest request) => pending.future;
+  Future<void> run(AcpRunRequest request) {
+    started.complete();
+    return pending.future;
+  }
 }
 
 Future<List<Map<String, Object?>>> _exchange(

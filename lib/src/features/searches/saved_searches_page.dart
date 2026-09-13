@@ -169,6 +169,7 @@ class _SavedSearchesPageState extends State<SavedSearchesPage> {
         if (result.candidateJobIds.isNotEmpty) {
           analyzing = await harnesses.dispatchSearchAnalysis(
             result.candidateJobIds,
+            savedSearchId: search.id,
           );
         }
       } on Object catch (error) {

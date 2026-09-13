@@ -244,7 +244,10 @@ abstract interface class AiHarnessStore {
 
   Future<AiDispatchResult> dispatchManualImport(String jobId);
 
-  Future<int> dispatchSearchAnalysis(List<String> jobIds);
+  Future<int> dispatchSearchAnalysis(
+    List<String> jobIds, {
+    String? savedSearchId,
+  });
 
   Future<String> startConversation(
     String message, {
@@ -342,6 +345,12 @@ class AiHarnessRepository implements AiHarnessStore {
                   database.aiWorkOrders,
                 )..where((r) => r.id.equals(id))).getSingle()).status !=
                 'failed') {
+          final stoppedOrder = await (database.select(
+            database.aiWorkOrders,
+          )..where((r) => r.id.equals(id))).getSingle();
+          final searchQueue =
+              (jsonDecode(stoppedOrder.scopeJson) as Map)['search_queue'] ==
+              true;
           final now = DateTime.now().toUtc();
           await database.transaction(() async {
             await (database.update(database.aiWorkItems)..where(
@@ -351,7 +360,7 @@ class AiHarnessRepository implements AiHarnessStore {
                 ))
                 .write(
                   AiWorkItemsCompanion(
-                    status: const Value('failed'),
+                    status: Value(searchQueue ? 'queued' : 'failed'),
                     error: const Value(
                       'Interrupted by user. Retry or continue the conversation to finish this work.',
                     ),
@@ -427,6 +436,17 @@ class AiHarnessRepository implements AiHarnessStore {
       )..where((row) => row.id.equals(id))).getSingleOrNull();
       if (order == null) {
         throw ArgumentError('AI conversation no longer exists.');
+      }
+      final started = _activeTurns[id];
+      if (started != null) {
+        started.control.cancel();
+        await started.done.future;
+        return;
+      }
+      if (order.status == 'queued' &&
+          (jsonDecode(order.scopeJson) as Map)['search_queue'] == true) {
+        await _setConversationStatus(id, 'interrupted');
+        return;
       }
       if (order.status == 'running') {
         throw StateError(
@@ -1779,8 +1799,14 @@ Review (untrusted feedback): ${jsonEncode(review.toString())}''',
   Future<void> _searchAnalysisTail = Future.value();
 
   @override
-  Future<int> dispatchSearchAnalysis(List<String> jobIds) async {
+  Future<int> dispatchSearchAnalysis(
+    List<String> jobIds, {
+    String? savedSearchId,
+  }) async {
     if (jobIds.isEmpty) return 0;
+    if (savedSearchId != null) {
+      return _dispatchNamedSearch(jobIds, savedSearchId);
+    }
     final queued = await database.transaction(() async {
       final candidates = await JobRepository(
         database,
@@ -1806,6 +1832,378 @@ Review (untrusted feedback): ${jsonEncode(review.toString())}''',
       }
     });
     return queued.length;
+  }
+
+  final _scheduledSearches = <String>{};
+
+  Future<int> _dispatchNamedSearch(List<String> jobIds, String searchId) async {
+    final search = await (database.select(
+      database.savedSearches,
+    )..where((r) => r.id.equals(searchId))).getSingle();
+    final profile = await _defaultAcpProfile(AiAgentPurpose.jobMatching);
+    final id = _uuid.v7();
+    final now = DateTime.now().toUtc();
+    final count = await database.transaction(() async {
+      final candidates = await JobRepository(
+        database,
+      ).searchAnalysisCandidates(jobIds);
+      if (candidates.isEmpty) return 0;
+      await (database.update(database.jobs)..where(
+            (r) =>
+                r.id.isIn(candidates) &
+                r.reviewState.equals('hidden_by_search'),
+          ))
+          .write(const JobsCompanion(reviewState: Value('pending_evaluation')));
+      await database
+          .into(database.aiWorkOrders)
+          .insert(
+            AiWorkOrdersCompanion.insert(
+              id: id,
+              kind: 'search_analysis',
+              status: 'queued',
+              scopeJson: jsonEncode({
+                'search_queue': true,
+                'saved_search_id': searchId,
+                'search_name': search.name,
+                'search_job_ids': candidates,
+                'job_ids': [candidates.first],
+              }),
+              agentId: Value(profile.id),
+              configValuesJson: Value(profile.configValuesJson),
+              title: Value('Evaluate search: ${search.name}'),
+              promptVersion: 'search-evaluation-v7',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      for (final jobId in candidates) {
+        await database
+            .into(database.aiWorkItems)
+            .insert(
+              AiWorkItemsCompanion.insert(
+                id: _uuid.v7(),
+                workOrderId: id,
+                subjectId: jobId,
+                status: 'queued',
+                idempotencyKey: 'search:$id:$jobId',
+                updatedAt: now,
+              ),
+            );
+      }
+      await _insertActivity(
+        workOrderId: id,
+        role: 'user',
+        kind: 'message',
+        text:
+            'Evaluate the ${candidates.length} new listings from ${search.name}, one at a time.',
+        now: now,
+      );
+      return candidates.length;
+    });
+    if (count > 0) _enqueueSavedSearch(id);
+    return count;
+  }
+
+  void _enqueueSavedSearch(String id) {
+    if (!_scheduledSearches.add(id)) return;
+    _searchAnalysisTail = _searchAnalysisTail.then((_) async {
+      try {
+        await _runSavedSearch(id);
+      } finally {
+        _scheduledSearches.remove(id);
+      }
+    });
+  }
+
+  /// Called once by the desktop at startup, before expiring old leases.
+  Future<int> resumePendingSearchAnalysis() async {
+    final orders =
+        await (database.select(database.aiWorkOrders)
+              ..where(
+                (r) =>
+                    r.kind.equals('search_analysis') &
+                    r.status.isIn(['queued', 'running']),
+              )
+              ..orderBy([
+                (r) => OrderingTerm.asc(r.createdAt),
+                (r) => OrderingTerm.asc(r.id),
+              ]))
+            .get();
+    var resumed = 0;
+    for (final order in orders) {
+      if (_scheduledSearches.contains(order.id) ||
+          _activeTurns.containsKey(order.id)) {
+        continue;
+      }
+      await database.transaction(() async {
+        // An older helper may have saved the evaluation just before shutdown,
+        // before its separate completion write reached the work item.
+        await database.customStatement(
+          '''UPDATE ai_work_items SET status = 'completed', error = NULL
+          WHERE work_order_id = ? AND status IN ('queued', 'running', 'submitted')
+          AND EXISTS (SELECT 1 FROM jobs j JOIN job_evaluations e ON e.id = j.current_evaluation_id
+            WHERE j.id = ai_work_items.subject_id AND e.work_order_id = ?)''',
+          [order.id, order.id],
+        );
+
+        await (database.update(database.aiWorkItems)..where(
+              (r) =>
+                  r.workOrderId.equals(order.id) &
+                  r.status.isIn(['running', 'submitted']),
+            ))
+            .write(
+              const AiWorkItemsCompanion(
+                status: Value('queued'),
+                error: Value(null),
+              ),
+            );
+        await (database.update(
+          database.aiWorkOrders,
+        )..where((r) => r.id.equals(order.id))).write(
+          const AiWorkOrdersCompanion(
+            status: Value('queued'),
+            leasedUntil: Value(null),
+          ),
+        );
+        await _insertActivity(
+          workOrderId: order.id,
+          role: 'system',
+          kind: 'message',
+          text:
+              'Resuming unfinished search evaluation after reopening CareerShopper. Saved results are retained.',
+          now: DateTime.now().toUtc(),
+        );
+      });
+      if ((jsonDecode(order.scopeJson) as Map)['search_queue'] == true) {
+        _enqueueSavedSearch(order.id);
+      } else {
+        // Older versions saved one work order per listing.
+        _scheduledSearches.add(order.id);
+        _searchAnalysisTail = _searchAnalysisTail.then((_) async {
+          try {
+            final profile = await _profileForOrder(order);
+            await _runQueuedImport(
+              order.id,
+              previousSession: order.acpSessionId == null
+                  ? null
+                  : (
+                      id: order.acpSessionId!,
+                      profileKey: _searchProfileKey(profile),
+                    ),
+            );
+          } finally {
+            _scheduledSearches.remove(order.id);
+          }
+        });
+      }
+      resumed++;
+    }
+    return resumed;
+  }
+
+  String _searchProfileKey(
+    AiHarnessProfileRow profile, [
+    String? configValuesJson,
+  ]) => jsonEncode([
+    profile.id,
+    profile.executable,
+    profile.argumentsJson,
+    configValuesJson ?? profile.configValuesJson,
+  ]);
+
+  Future<void> _runSavedSearch(String id) => _runControlled(id, (
+    control,
+  ) async {
+    try {
+      var order = await (database.select(
+        database.aiWorkOrders,
+      )..where((r) => r.id.equals(id))).getSingle();
+      if (order.status != 'queued') return;
+      final scope = (jsonDecode(order.scopeJson) as Map)
+          .cast<String, Object?>();
+      final jobIds = (scope['search_job_ids'] as List).cast<String>();
+      final lastMessage = (await watchActivity(
+        id,
+      ).first).where((e) => e.role == 'user').lastOrNull;
+      var firstTurn = true;
+      for (final jobId in jobIds) {
+        control.checkCancelled();
+        final item =
+            await (database.select(database.aiWorkItems)..where(
+                  (r) => r.workOrderId.equals(id) & r.subjectId.equals(jobId),
+                ))
+                .getSingle();
+        if (!['queued', 'running', 'submitted'].contains(item.status)) continue;
+        if ((await JobRepository(
+          database,
+        ).searchAnalysisCandidates([jobId], ignoringWorkOrderId: id)).isEmpty) {
+          await (database.update(
+            database.aiWorkItems,
+          )..where((r) => r.id.equals(item.id))).write(
+            const AiWorkItemsCompanion(
+              status: Value('skipped'),
+              error: Value(null),
+            ),
+          );
+          continue;
+        }
+        final job = (await JobRepository(database).getJob(jobId))!;
+        final url = await _searchEvaluationUrl(
+          jobId,
+          job.applicationUrl?.toString(),
+        );
+        final profile = await _profileForOrder(order);
+        final profileKey = _searchProfileKey(profile, order.configValuesJson);
+        final existing = scope['session_profile_key'] == profileKey
+            ? order.acpSessionId
+            : null;
+        scope['job_ids'] = [jobId];
+        scope['active_job_id'] = jobId;
+        scope['url'] = url;
+        final now = DateTime.now().toUtc();
+        await database.transaction(() async {
+          await (database.update(
+            database.aiWorkOrders,
+          )..where((r) => r.id.equals(id))).write(
+            AiWorkOrdersCompanion(
+              status: const Value('running'),
+              scopeJson: Value(jsonEncode(scope)),
+              leasedUntil: Value(now.add(const Duration(minutes: 30))),
+              updatedAt: Value(now),
+            ),
+          );
+          await (database.update(
+            database.aiWorkItems,
+          )..where((r) => r.id.equals(item.id))).write(
+            AiWorkItemsCompanion(
+              status: const Value('running'),
+              error: const Value(null),
+              updatedAt: Value(now),
+            ),
+          );
+          await _insertActivity(
+            workOrderId: id,
+            role: 'system',
+            kind: 'message',
+            text:
+                'Evaluating ${job.title} at ${job.employerName} (${jobIds.indexOf(jobId) + 1}/${jobIds.length}).',
+            now: now,
+          );
+        });
+        var turnFinished = false;
+        try {
+          if (url == null || url.isEmpty) {
+            throw StateError('This listing has no saved URL.');
+          }
+          final profileInstructions = await _matchingProfileInstructions();
+          final message = firstTurn && lastMessage != null
+              ? '\nUser message: ${lastMessage.text}'
+              : '';
+          await _runSessionTurn(
+            AcpRunRequest(
+              control: control,
+              executable: profile.executable,
+              arguments: _decodeArguments(profile.argumentsJson),
+              configValues: _decodeConfig(order.configValuesJson),
+              workOrderId: id,
+              jobId: jobId,
+              jobUrl: url,
+              existingSessionId: existing,
+              allowNewSessionIfUnsupported: true,
+              permissionContext: '${order.title}: ${job.title}',
+              images: firstTurn ? lastMessage?.images ?? const [] : const [],
+              prompt:
+                  '${_manualImportPrompt(workOrderId: id, jobId: jobId, url: url, fromSearch: true, profileInstructions: profileInstructions)}$message',
+              resumedPrompt:
+                  'Continue search `${scope['search_name']}` with only job `$jobId` at `$url`. '
+                  'Work order: `$id`. Use `careershopper_session`; check `health_get` and `job_get`. '
+                  'This is the current assignment, replacing previous jobs. Continue from saved content and progress. '
+                  '$profileInstructions '
+                  'Use the established search workflow and retrieval-block rules. Evaluate this job individually without scripts or keyword scoring. '
+                  'Save its reasoned `job_evaluation_submit` and end the turn. Do not apply or change review decisions.$message',
+              onSessionStarted: (session) async {
+                scope['session_profile_key'] = profileKey;
+                await (database.update(
+                  database.aiWorkOrders,
+                )..where((r) => r.id.equals(id))).write(
+                  AiWorkOrdersCompanion(
+                    acpSessionId: Value(session),
+                    scopeJson: Value(jsonEncode(scope)),
+                  ),
+                );
+              },
+              onSessionUpdate: (update, replaying) => replaying
+                  ? Future.value()
+                  : _recordSessionUpdate(id, update, callScope: jobId),
+            ),
+          );
+          control.checkCancelled();
+          turnFinished = true;
+          final finished = await (database.select(
+            database.aiWorkItems,
+          )..where((r) => r.id.equals(item.id))).getSingle();
+          if (finished.status != 'completed') {
+            throw StateError(
+              'ACP agent finished without submitting an evaluation for ${job.title}.',
+            );
+          }
+        } on Object catch (error) {
+          if (control.isCancelled) rethrow;
+          await (database.update(
+            database.aiWorkItems,
+          )..where((r) => r.id.equals(item.id))).write(
+            AiWorkItemsCompanion(
+              status: Value(turnFinished ? 'failed' : 'queued'),
+              error: Value(_workOrderError(error)),
+            ),
+          );
+          if (!turnFinished) rethrow;
+          await _insertActivity(
+            workOrderId: id,
+            role: 'system',
+            kind: 'error',
+            text: _workOrderError(error),
+            now: DateTime.now().toUtc(),
+          );
+        }
+        firstTurn = false;
+        order = await (database.select(
+          database.aiWorkOrders,
+        )..where((r) => r.id.equals(id))).getSingle();
+      }
+      final items = await (database.select(
+        database.aiWorkItems,
+      )..where((r) => r.workOrderId.equals(id))).get();
+      await _setConversationStatus(
+        id,
+        items.any((i) => i.status == 'failed') ? 'failed' : 'completed',
+      );
+    } on Object catch (error) {
+      if (control.isCancelled) return;
+      await _insertActivity(
+        workOrderId: id,
+        role: 'system',
+        kind: 'error',
+        text: _workOrderError(error),
+        now: DateTime.now().toUtc(),
+      );
+      await _setConversationStatus(id, 'failed');
+    }
+  });
+
+  Future<String?> _searchEvaluationUrl(
+    String jobId,
+    String? applicationUrl,
+  ) async {
+    final indeed =
+        await (database.select(database.jobObservations)
+              ..where(
+                (r) => r.jobId.equals(jobId) & r.sourceFamily.equals('indeed'),
+              )
+              ..orderBy([(r) => OrderingTerm.desc(r.observedAt)])
+              ..limit(1))
+            .getSingleOrNull();
+    return indeed?.sourceUrl ?? applicationUrl;
   }
 
   @override
@@ -1834,18 +2232,7 @@ Review (untrusted feedback): ${jsonEncode(review.toString())}''',
     )..where((row) => row.id.equals(job.currentSnapshotId!))).getSingle();
     var evaluationUrl = snapshot.applicationUrl;
     if (fromSearch) {
-      final indeed =
-          await (database.select(database.jobObservations)
-                ..where(
-                  (row) =>
-                      row.jobId.equals(jobId) &
-                      row.sourceFamily.equals('indeed'),
-                )
-                ..orderBy([(row) => OrderingTerm.desc(row.observedAt)])
-                ..limit(1))
-              .getSingleOrNull();
-      // Keep the external application URL for applying, not search evaluation.
-      evaluationUrl = indeed?.sourceUrl ?? evaluationUrl;
+      evaluationUrl = await _searchEvaluationUrl(jobId, evaluationUrl);
     }
     final url = evaluationUrl;
     if (url == null || url.isEmpty) {
@@ -1976,12 +2363,7 @@ Review (untrusted feedback): ${jsonEncode(review.toString())}''',
         return previousSession;
       }
       final profile = await _profileForOrder(order);
-      final profileKey = jsonEncode([
-        profile.id,
-        profile.executable,
-        profile.argumentsJson,
-        profile.configValuesJson,
-      ]);
+      final profileKey = _searchProfileKey(profile);
       String? sessionId;
       final now = DateTime.now().toUtc();
       await database.transaction(() async {
@@ -2335,6 +2717,47 @@ Use the saved posting when usable. Keep prior retrieval-block and user-supplied-
     if (order.status == 'running') {
       throw StateError('Wait for the current AI turn to finish.');
     }
+    if ((jsonDecode(order.scopeJson) as Map)['search_queue'] == true) {
+      final unfinished =
+          await (database.select(database.aiWorkItems)..where(
+                (r) =>
+                    r.workOrderId.equals(order.id) &
+                    r.status.isIn(['queued', 'running', 'submitted', 'failed']),
+              ))
+              .get();
+      if (unfinished.isNotEmpty) {
+        await database.transaction(() async {
+          await _insertActivity(
+            workOrderId: order.id,
+            role: 'user',
+            kind: 'message',
+            text: normalized,
+            payloadJson: jsonEncode({
+              'images': images.map((image) => image.toContentBlock()).toList(),
+            }),
+            now: DateTime.now().toUtc(),
+          );
+          await (database.update(
+            database.aiWorkItems,
+          )..where((r) => r.id.isIn(unfinished.map((i) => i.id)))).write(
+            const AiWorkItemsCompanion(
+              status: Value('queued'),
+              error: Value(null),
+            ),
+          );
+          await (database.update(
+            database.aiWorkOrders,
+          )..where((r) => r.id.equals(order.id))).write(
+            const AiWorkOrdersCompanion(
+              status: Value('queued'),
+              leasedUntil: Value(null),
+            ),
+          );
+        });
+        _enqueueSavedSearch(order.id);
+        return;
+      }
+    }
     if (order.acpSessionId == null &&
         !{'job_chat', 'interactive_chat'}.contains(order.kind)) {
       throw StateError('This conversation has no resumable ACP session.');
@@ -2634,7 +3057,10 @@ $message''',
       _ => 'activity',
     };
     final externalId = switch (kind) {
-      'tool_call' || 'tool_call_update' => update['toolCallId']?.toString(),
+      'tool_call' || 'tool_call_update' =>
+        update['toolCallId'] == null
+            ? null
+            : '${callScope.isEmpty ? '' : '$callScope:'}${update['toolCallId']}',
       'usage_update' => 'usage',
       _ => null,
     };

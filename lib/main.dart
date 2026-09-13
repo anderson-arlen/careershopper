@@ -32,6 +32,7 @@ Future<void> main() async {
     database,
     runner: StdioAcpAgentRunner(permissionPrompt: approvals.request),
   );
+  await harnesses.resumePendingSearchAnalysis();
   await harnesses.monitorWorkExpiry();
   final configuration = ConfigurationRepository(database, jobs);
   SearchScheduler(configuration, harnesses).start();

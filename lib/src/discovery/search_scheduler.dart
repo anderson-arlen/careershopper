@@ -42,7 +42,10 @@ class SearchScheduler {
           }
           final result = await configuration.runSavedSearch(id);
           if (result.candidateJobIds.isNotEmpty) {
-            await harnesses.dispatchSearchAnalysis(result.candidateJobIds);
+            await harnesses.dispatchSearchAnalysis(
+              result.candidateJobIds,
+              savedSearchId: id,
+            );
           }
           await configuration.recordScheduleError(
             id,

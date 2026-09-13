@@ -169,8 +169,12 @@ When the desktop supplies an applicant context version, reuse the loaded profile
 while that version is unchanged. Refresh only if the version changes or the
 profile is no longer in context (for example after compaction). An external
 caller without that version should refresh when profile freshness is uncertain.
-The desktop sends one job per turn in a shared search session; current work-order
-and job IDs replace earlier assignments. Check the current `careershopper_session`
+The desktop keeps one conversation named after each saved-search run, with a saved
+queue and shared applicant context. It sends one job per turn; the current job ID
+replaces the previous assignment in that work order. After reopening the app,
+continue from the saved session and current assignment without reevaluating
+completed jobs. Saved progress and per-job status are available to unscoped callers
+through `ai_conversation_get`; MCP must not launch or resume the harness itself. Check the current `careershopper_session`
 scope with `health_get`. Evaluate each role individually against applicant evidence;
 never generate scores with scripts, keyword counts, or batch heuristics. For a
 desktop-assigned job, submit its reasoned evaluation and end the turn before

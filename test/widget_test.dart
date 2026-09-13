@@ -1929,6 +1929,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(configuration.runIds, ['paused-search']);
     expect(harnesses.analyzedIds, ['new-job']);
+    expect(harnesses.analyzedSearchId, 'paused-search');
     expect(find.text('Search results: Backend'), findsOneWidget);
     expect(find.text('Test: Completed'), findsOneWidget);
     await tester.tap(find.text('Close'));
@@ -2206,7 +2207,10 @@ class _EmptyAiHarnessStore implements AiHarnessStore {
   @override
   Future<String> duplicateProfile(String id, String name) async => 'copy';
   @override
-  Future<int> dispatchSearchAnalysis(List<String> jobIds) async => 0;
+  Future<int> dispatchSearchAnalysis(
+    List<String> jobIds, {
+    String? savedSearchId,
+  }) async => 0;
   @override
   Future<AiDispatchResult> queueApplication(
     String jobId, {
@@ -2655,9 +2659,14 @@ class _PurposeAiHarnessStore extends _EmptyAiHarnessStore {
 
 class _SearchAnalysisHarness extends _EmptyAiHarnessStore {
   List<String> analyzedIds = [];
+  String? analyzedSearchId;
   @override
-  Future<int> dispatchSearchAnalysis(List<String> jobIds) async {
+  Future<int> dispatchSearchAnalysis(
+    List<String> jobIds, {
+    String? savedSearchId,
+  }) async {
     analyzedIds = jobIds;
+    analyzedSearchId = savedSearchId;
     return jobIds.length;
   }
 

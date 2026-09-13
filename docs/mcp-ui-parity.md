@@ -669,29 +669,39 @@ inspection remains available through the read-only MCP surfaces.
 
 ### Sequential search evaluation
 
-Search results are claimed atomically to avoid duplicate analysis, then evaluated
-one job at a time. A search dispatch reuses its ACP session after each successful
-job; subsequent turns contain only the next assignment and a small applicant
-context version. The version is computed locally from the saved Resume revision
-and career preferences. The agent reads `profile_get` once and reuses that context
-unless the version changes or the profile is no longer available in context.
-Each job retains its own work order, scoped MCP server, activity, and error state.
-Session loading supplies the current work-order MCP configuration; scope limits
-job access without discarding the applicant's conversation context. Resuming an
-earlier job waits for any active turn in that shared session to finish.
-Search analysis uses the same import, listing refresh, confirmed-profile
-comparison, and scoring instructions as individual
-Refresh & reanalyze; there is no separate bulk-scoring prompt. A failure affects
-only its listing and the queue continues in a fresh session. New search dispatches
-or changed harness settings also start fresh. ACP agents without session loading
-receive the full workflow in a new session for each job. Eligibility is checked
-again before a queued job starts so newer evaluations and user decisions are
-preserved; skipping a job does not discard the shared context. Prompts require
-individual evidence-based evaluations, not scripted or keyword-based scoring.
+Each saved-search run creates one AI conversation titled `Evaluate search: <name>`.
+Manual and scheduled searches pass their saved-search ID to the same repository
+operation. Candidates are claimed atomically and stored as individual work items
+in that conversation, in a durable order. The agent receives one job per turn;
+only the current running assignment may fetch, import, or submit an evaluation.
+An evaluation and its item completion are saved together in one transaction,
+so repeated submissions cannot duplicate a completed search item.
 
-Existing `job_get`, `job_evaluation_submit`, and read-only activity tools expose
-the same per-job data. No general ACP launch tool is added. Search polling and
-search enablement are unchanged.
+The run retains one ACP session. Later turns send only the current assignment and
+a small applicant context version, computed locally from the saved Resume revision
+and career preferences. The agent reads `profile_get` once and reuses its content
+unless that version changes or context is lost. Eligibility is checked again before
+each job; completed, otherwise evaluated, blocked, or discarded jobs are not rerun.
+Prompts require individual evidence-based evaluation, not scripted keyword scoring.
+Agents without session loading receive the full workflow in a fresh session.
+
+At desktop startup, queued/running search work is recovered before lease expiry
+handling, including work whose lease expired while the app was closed. The saved
+session and pending items are reused; completed results and activity are retained.
+Recovery also recognizes evaluations saved by an older helper before it marked the
+item complete. It does not rerun the source search or clear provider blocks. An
+explicit Stop leaves the conversation paused; Continue resumes pending work in
+that same conversation. A normal agent turn without an evaluation fails only its
+item and the queue continues. Harness/transport errors pause the run with its
+remaining work retained for an explicit continuation, rather than failing every job.
+Older per-listing search work orders are also recovered without merging history.
+
+`ai_conversations_list` exposes the same search-derived title.
+`ai_conversation_get` exposes the search identity and queue in `scope`, per-job
+`work_items` with `job_id`, `status`, and `error`, plus the saved transcript.
+`job_get` and `job_evaluation_submit` retain the per-job data contract. No MCP
+operation launches or resumes the ACP harness; startup recovery is desktop-owned.
+Search polling and search enablement are unchanged.
 
 ## Fixed resume wording
 

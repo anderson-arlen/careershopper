@@ -740,7 +740,7 @@ class McpServer {
 
   Future<Map<String, Object?>> _jobEvaluationSubmit(
     Map<String, Object?> arguments,
-  ) async {
+  ) => database.transaction(() async {
     final jobId = _requiredString(arguments, 'job_id');
     await _enforceWorkOrderScope(jobId);
     final job = await (database.select(
@@ -830,7 +830,7 @@ class McpServer {
       'threshold': threshold,
       'review_state': reviewState,
     };
-  }
+  });
 
   Future<Map<String, Object?>> _jobReviewSet(
     Map<String, Object?> arguments,
@@ -1322,6 +1322,20 @@ class McpServer {
   Future<void> _enforceWorkOrderScope(String subjectId) async {
     final workOrderId = _workOrderId;
     if (workOrderId == null || workOrderId.isEmpty) return;
+    final order = await (database.select(
+      database.aiWorkOrders,
+    )..where((r) => r.id.equals(workOrderId))).getSingleOrNull();
+    if (order == null) {
+      throw const _RpcError(-32602, 'Subject is outside this ACP work order.');
+    }
+    final scope = jsonDecode(order.scopeJson) as Map;
+    if (scope['search_queue'] == true &&
+        (scope['active_job_id'] != subjectId || order.status != 'running')) {
+      throw const _RpcError(
+        -32602,
+        'Only the current running search assignment may be changed.',
+      );
+    }
     final item =
         await (database.select(database.aiWorkItems)
               ..where(
@@ -1331,6 +1345,12 @@ class McpServer {
               )
               ..limit(1))
             .getSingleOrNull();
+    if (scope['search_queue'] == true && item?.status != 'running') {
+      throw const _RpcError(
+        -32602,
+        'This search item is not awaiting an evaluation.',
+      );
+    }
     if (item == null) {
       throw const _RpcError(-32602, 'Subject is outside this ACP work order.');
     }
@@ -1361,7 +1381,12 @@ class McpServer {
                     row.status.isIn(const ['queued', 'running']),
               ))
               .get();
-      if (remaining.isEmpty) {
+      final order = await (database.select(
+        database.aiWorkOrders,
+      )..where((r) => r.id.equals(workOrderId))).getSingle();
+      // The desktop finishes a search after the final ACP turn has ended.
+      if (remaining.isEmpty &&
+          (jsonDecode(order.scopeJson) as Map)['search_queue'] != true) {
         await (database.update(
           database.aiWorkOrders,
         )..where((row) => row.id.equals(workOrderId))).write(

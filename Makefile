@@ -8,12 +8,13 @@ AGENTS_DIR ?= $(HOME)/.agents
 .DEFAULT_GOAL := help
 .NOTPARALLEL:
 
-.PHONY: help get generate format analyze test check run build-linux build-agent install-desktop install-agent install mcp-info
+.PHONY: help get generate format analyze test test-native check run build-linux build-agent install-desktop install-agent install mcp-info
 
 help:
 	@echo "CareerShopper development targets"
 	@echo "  make run          Run the Flutter desktop app"
 	@echo "  make check        Format check, analyze, and test"
+	@echo "  make test-native  Test Linux tray behavior (requires a GTK display)"
 	@echo "  make build-linux  Build a release Linux desktop bundle"
 	@echo "  make build-agent  Build the native MCP/plugin helper"
 	@echo "  make install      Install the desktop app, MCP plugin, and Skill"
@@ -33,6 +34,11 @@ analyze: get
 
 test: get
 	flutter test
+
+test-native:
+	cmake -S test/linux -B build/native-tests
+	cmake --build build/native-tests
+	dbus-run-session -- ctest --test-dir build/native-tests --output-on-failure
 
 check: format analyze test
 

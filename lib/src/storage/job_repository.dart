@@ -55,6 +55,7 @@ List<({InboxJob job, int score})> searchJobsByText(
   final matches = <({InboxJob job, int score, int index})>[];
   for (final (index, job) in jobs.indexed) {
     final fields = [
+      job.id.toLowerCase(),
       job.title.toLowerCase(),
       job.description.toLowerCase(),
       job.employerName.toLowerCase(),
@@ -457,6 +458,12 @@ class JobRepository implements JobStore {
       _aiErrorSql,
       watchedTables: [database.aiWorkOrders, database.aiWorkItems],
     );
+    final sourceFamily = CustomExpression<String>(
+      "COALESCE((SELECT NULLIF(LOWER(TRIM(o.source_family)), '') "
+      'FROM job_observations o WHERE o.job_id = jobs.id '
+      "ORDER BY o.observed_at, o.rowid LIMIT 1), 'unknown')",
+      watchedTables: [database.jobObservations],
+    );
     final query = database.select(database.jobs).join([
       innerJoin(
         database.jobSnapshots,
@@ -476,7 +483,7 @@ class JobRepository implements JobStore {
       ),
     ]);
 
-    query.addColumns([readyToApply, aiError]);
+    query.addColumns([readyToApply, aiError, sourceFamily]);
     if (inboxOnly) {
       query.where(const CustomExpression<bool>(_inboxEligibilitySql));
     }
@@ -497,6 +504,7 @@ class JobRepository implements JobStore {
             final application = row.readTableOrNull(database.applications);
             return InboxJob(
               id: job.id,
+              sourceFamily: row.read(sourceFamily) ?? 'unknown',
               employerId: employer?.id,
               employerLogoPng: employer?.logoPng,
               employerLogoSourceUrl: employer?.logoSourceUrl,

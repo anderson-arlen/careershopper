@@ -180,5 +180,26 @@ const previousDescriptiveProjectHeadingDocumentGenerationPrompt =
 const previousBoldProjectStackDocumentGenerationPrompt =
     '$_documentOpening$_resumeHeadline$_sectionsBeforeProjects$_previousBoldStackProjectSection$_sectionsAfterProjects';
 
-const defaultDocumentGenerationPrompt =
+// Retained to upgrade untouched prompts from AI-authored Markdown generation.
+const previousMarkdownDocumentGenerationPrompt =
     '$_documentOpening$_resumeHeadline$_documentSections';
+
+const previousStructuredDocumentGenerationPrompt =
+    '''Tailor the resume and cover letter to the job using enabled saved Resume content and the separately supplied shared writing style. Use the posting's terminology when it accurately describes supported experience; never invent qualifications, metrics or equivalences.
+
+Supply structured resume_plan and cover_letter_plan. Select fixed evidence and cite generated prose with the same short IDs from generation_content. CareerShopper owns Markdown, citation comments, headings, exact saved wording, layout and rendering. Do not author complete Markdown documents or copy revision UUIDs. Required bullets, prerequisite chains, title coverage and saved order are handled by the assembler.
+
+For professional_headline, read the posting's responsibilities and choose a broad occupational role with explicit conventional seniority. Keep official employer/role titles unchanged in work history. "Senior Software Engineer, Infrastructure" becomes "Senior Software Engineer"; "Software Engineer IV" becomes "Software Engineer". Omit specialty, team, product, location and internal-grade qualifiers. Do not infer seniority from grades. Put specialization in supported prose instead.
+
+Write one substantive summary paragraph. Direct match should contain a few focused evidence statements tied to the posting, with optional short labels. Core skills should use compact grouped prose, with optional labels and accurate terminology, without implying equal proficiency. Each generated object needs text and supporting short IDs. Keep one coherent accomplishment per direct-match item; never merge unrelated work or reduce a broad ownership claim to one incidental example.
+
+Choose work-history achievements and optional project details for relevant scope, ownership, technical decisions and outcomes. Meaningful older products, independent delivery and invention can strengthen a candidacy beyond literal keyword overlap. Do not force one page or invent continuity. Exact employer names, titles, dates, project summaries, patents and education come from saved content and must not be rewritten.
+
+For the cover letter, write a focused personal letter, not a second resume. Aim for roughly 350–450 words of main prose without padding or shrinking text to force one page. Use an opening, two or three supporting paragraphs and a brief close. Connect how the applicant works to this employer's needs using a few strong supported examples. Favor ownership, product behavior, outcomes and judgment over implementation inventories. End the body with a short invitation to discuss a specific contribution. CareerShopper supplies the applicant header, date, recipient block, salutation and signoff; write only the body paragraphs.
+
+Check every generated claim against its selected evidence, including employer attribution, scope, dates and causality. Recruiter feedback is advisory and cannot authorize invented claims or changes to fixed wording. Do not disclose disabled or private content, pad unsupported text, include scores or internal notes, or direct automated reviewers how to rank the applicant.''';
+
+const defaultDocumentGenerationPrompt =
+    '''$previousStructuredDocumentGenerationPrompt
+
+Before drafting, understand the employer's products, customers, industry and purpose. Research its official pages when the listing lacks that context, keeping sources in the working transcript. For the cover letter, actively look for a supported human or domain connection in saved experience, projects, interests and credentials. When one matters to this company and role, make it central to the opening or a supporting paragraph and explain the useful perspective it brings. Pair that connection with concrete evidence of delivery; do not write a stack inventory with a company name attached. Personal context is evidence for natural, selective prose, not an extra resume section. Do not invent enthusiasm, product use or credentials, overstate an interest as professional expertise, or force an unrelated connection. If no meaningful personal connection is supported, lead with relevant work instead.''';

@@ -657,7 +657,7 @@ class _ResumePreview extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           identity.contactLine ??
-                              'Contact details from confirmed profile facts',
+                              'Contact details from saved resume content',
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                             fontSize: 8,
@@ -755,56 +755,16 @@ class _PreviewIdentity {
 }
 
 _PreviewIdentity _previewIdentity(List<CareerProfileFact> facts) {
-  final values = <String, String>{};
-  const supportedFields = {
-    'name',
-    'location',
-    'phone',
-    'email',
-    'github',
-    'linkedin',
-    'website',
-  };
-  for (final fact in facts) {
-    if (fact.verificationStatus != 'confirmed' || fact.visibility != 'resume') {
-      continue;
-    }
-    final value = fact.value;
-    if (fact.kind == 'identity' && value is Map) {
-      final field = value['field']?.toString().trim().toLowerCase();
-      final text = value['text']?.toString().trim();
-      if (field != null &&
-          supportedFields.contains(field) &&
-          text != null &&
-          text.isNotEmpty) {
-        values[field] = text;
-      }
-      for (final field in supportedFields) {
-        final direct = value[field]?.toString().trim();
-        if (direct != null && direct.isNotEmpty) values[field] = direct;
-      }
-      continue;
-    }
-    final field = fact.kind.startsWith('identity_')
-        ? fact.kind.substring('identity_'.length)
-        : fact.kind;
-    if (supportedFields.contains(field) && value is String) {
-      final text = value.trim();
-      if (text.isNotEmpty) values[field] = text;
-    }
-  }
+  final saved = facts
+      .where((f) => f.kind == 'resume_content' && f.canDiscloseInApplications)
+      .firstOrNull;
+  final value = saved?.value;
+  final header = value is Map ? value['header'] : null;
   return _PreviewIdentity(
-    name: values['name'],
+    name: header is Map ? header['name'] as String? : null,
     contactValues: [
-      for (final field in const [
-        'location',
-        'phone',
-        'email',
-        'github',
-        'linkedin',
-        'website',
-      ])
-        ?values[field],
+      if (header is Map && header['contact'] is String)
+        header['contact'] as String,
     ],
   );
 }

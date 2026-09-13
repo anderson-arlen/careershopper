@@ -31,6 +31,61 @@ void main() {
   tearDown(() => database.close());
 
   test(
+    'approval activity preserves the requested action and exact selected permission through MCP',
+    () async {
+      await harnesses.saveProfile(
+        const AiHarnessProfileDraft(
+          name: 'Test',
+          executable: '/bin/true',
+          arguments: [],
+        ),
+      );
+      final id = await harnesses.startConversation('Draft materials');
+      await _waitFor(() => runner.requests.isNotEmpty);
+      final call = {
+        'toolCallId': 'exec-example',
+        'title': 'mcp.careershopper_session.application_materials_submit',
+        'rawInput': {'job_id': 'job-123'},
+      };
+      for (final update in [
+        {
+          'sessionUpdate': 'permission_request',
+          'title': 'Approval required',
+          'toolCall': call,
+          'options': [
+            {'optionId': 'always', 'kind': 'allow_always'},
+          ],
+          'workingDirectory': '/tmp/work',
+        },
+        {
+          'sessionUpdate': 'permission_decision',
+          'title': 'Always allowed',
+          'toolCall': call,
+          'optionId': 'always',
+          'optionKind': 'allow_always',
+        },
+      ]) {
+        await runner.requests.first.onSessionUpdate!({'update': update}, false);
+      }
+      final result = await McpUiTools(
+        database,
+        harnesses: harnesses,
+      ).call('ai_conversation_get', {'conversation_id': id});
+      final approvals = (result['activity'] as List)
+          .where((a) => a['kind'].toString().startsWith('permission_'))
+          .toList();
+      expect(approvals, hasLength(2));
+      expect(approvals.first['details']['toolCall'], call);
+      expect(approvals.first['details']['workingDirectory'], '/tmp/work');
+      expect(approvals.last['details']['optionKind'], 'allow_always');
+      runner.complete(0);
+      await harnesses.watchConversations().firstWhere(
+        (rows) => rows.single.status == 'completed',
+      );
+    },
+  );
+
+  test(
     'chat interruption and completion each persist measured summaries through MCP',
     () async {
       await harnesses.saveProfile(
@@ -905,6 +960,14 @@ void main() {
         runner.requests.single.prompt,
         contains(jobEvaluationScoringInstructions),
       );
+      expect(
+        runner.requests.single.prompt,
+        contains('confidence as a number from 0 through 1 inclusive'),
+      );
+      expect(
+        runner.requests.single.prompt,
+        contains('for 78% confidence, use 0.78, not 78'),
+      );
       expect(runner.requests.single.prompt, isNot(contains(second)));
       await runner.requests.first.onSessionStarted!('first-job-session');
       await database.customStatement(
@@ -920,8 +983,10 @@ void main() {
         isNot(runner.requests.first.workOrderId),
       );
       expect(runner.requests.last.prompt, isNot(contains(first)));
-      // Both search and individual reevaluation use the very same workflow prompt.
-      expect(runner.requests.last.prompt, contains('manual job import'));
+      expect(
+        runner.requests.last.prompt,
+        contains('single-job search evaluation'),
+      );
       runner.complete(1);
       await harnesses.watchConversations().firstWhere(
         (rows) => rows.any((r) => r.status == 'failed'),
@@ -931,6 +996,138 @@ void main() {
       expect(items.firstWhere((i) => i.subjectId == second).status, 'failed');
     },
   );
+
+  test(
+    'Indeed search evaluation uses saved content and source URL, retaining application URL',
+    () async {
+      await harnesses.saveProfile(
+        const AiHarnessProfileDraft(
+          name: 'Test',
+          executable: '/bin/true',
+          arguments: [],
+        ),
+      );
+      for (final description in [
+        'Build Node.js services.',
+        '',
+        'Build services [description truncated]',
+      ]) {
+        final index = runner.requests.length;
+        final source = Uri.parse(
+          'https://www.indeed.com/viewjob?jk=test$index',
+        );
+        final application = Uri.parse('https://external.test/apply/$index');
+        final result = await jobs.ingest(
+          NormalizedListing(
+            sourceFamily: 'indeed',
+            adapterId: 'indeed_public_search_v1',
+            providerJobId: 'test$index',
+            title: 'Engineer',
+            employerName: 'Example',
+            normalizedEmployerName: 'example',
+            location: 'Remote',
+            description: description,
+            contentHash: 'hash$index',
+            sourceUrl: source,
+            applicationUrl: application,
+            observedAt: DateTime.now().toUtc(),
+          ),
+        );
+        expect(await harnesses.dispatchSearchAnalysis([result.jobId]), 1);
+        await _waitFor(() => runner.requests.length == index + 1);
+        final request = runner.requests.last;
+        expect(request.jobUrl, source.toString());
+        expect(request.existingSessionId, isNull);
+        expect(request.prompt, contains('skip steps 2 through 4'));
+        expect(
+          request.prompt,
+          contains('empty, a search excerpt, visibly cut off'),
+        );
+        expect(
+          request.prompt,
+          contains('do not by themselves mean it is incomplete'),
+        );
+        expect(request.prompt, isNot(contains(application.toString())));
+        expect(request.prompt, contains(jobEvaluationScoringInstructions));
+        expect(request.prompt, contains(companyContextInstructions));
+        expect(request.prompt, contains('Company research is separate'));
+        final saved = await jobs.getJob(result.jobId);
+        expect(saved!.applicationUrl, application);
+        expect(saved.description, description);
+        runner.complete(index);
+        await harnesses.watchConversations().firstWhere(
+          (rows) =>
+              rows.every((r) => r.status != 'running' && r.status != 'queued'),
+        );
+      }
+    },
+  );
+
+  for (final fromSearch in [true, false]) {
+    test(
+      'LinkedIn ${fromSearch ? 'search evaluation' : 'manual import'} receives local retrieval and block guidance',
+      () async {
+        await harnesses.saveProfile(
+          const AiHarnessProfileDraft(
+            name: 'Test',
+            executable: '/bin/true',
+            arguments: [],
+          ),
+        );
+        final source = Uri.parse('https://www.linkedin.com/jobs/view/123');
+        final String jobId;
+        if (fromSearch) {
+          final result = await jobs.ingest(
+            NormalizedListing(
+              sourceFamily: 'linkedin',
+              adapterId: 'linkedin_guest_search_v1',
+              providerJobId: '123',
+              title: 'Engineer',
+              employerName: 'Example',
+              normalizedEmployerName: 'example',
+              location: 'Remote',
+              description: '',
+              contentHash: 'empty',
+              sourceUrl: source,
+              applicationUrl: source,
+              observedAt: DateTime.now().toUtc(),
+            ),
+          );
+          jobId = result.jobId;
+          expect(await harnesses.dispatchSearchAnalysis([jobId]), 1);
+        } else {
+          jobId = await jobs.queueManualUrl(source);
+          expect(
+            (await harnesses.dispatchManualImport(jobId)).launched,
+            isTrue,
+          );
+        }
+        await _waitFor(() => runner.requests.isNotEmpty);
+        final request = runner.requests.single;
+        expect(request.jobId, jobId);
+        expect(request.jobUrl, source.toString());
+        expect(request.prompt, contains('Call `job_posting_fetch`'));
+        expect(request.prompt, contains('with `confirmed: true`'));
+        expect(
+          request.prompt,
+          contains(
+            'If `blocked: true`, stop without retries or switching tools',
+          ),
+        );
+        if (fromSearch) {
+          expect(request.prompt, contains('skip steps 2 through 4'));
+        }
+        // Dispatch supplies retrieval instructions without fabricating content.
+        expect((await jobs.getJob(jobId))!.description, isEmpty);
+        runner.complete(0);
+        await harnesses.watchConversations().firstWhere(
+          (rows) => rows.every(
+            (row) => row.status != 'running' && row.status != 'queued',
+          ),
+        );
+      },
+    );
+  }
 
   test(
     'search queue continues after one job fails and skips jobs changed while waiting',

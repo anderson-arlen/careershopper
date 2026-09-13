@@ -245,6 +245,7 @@ void main() {
           ('postgre', [body]),
           ('CORAL', [employer]),
           ('%_', [body]),
+          (body, [body]),
           ('no such job', <String>[]),
           ('remote', <String>[]),
           ('  ', source.map((j) => j.id).toList()),

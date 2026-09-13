@@ -29,7 +29,7 @@ void main() {
                 (request['options'] as List).any(
                   (o) => o['kind'] == 'allow_always',
                 ),
-                false,
+                true,
               );
               return chosen.future;
             },
@@ -45,7 +45,7 @@ void main() {
       });
     },
   );
-  for (final choice in ['no', 'always', 'made-up', null]) {
+  for (final choice in ['no', 'made-up', null]) {
     test('denial or invalid choice cannot grant access ($choice)', () async {
       expect(
         await requestAcpPermission(
@@ -61,6 +61,21 @@ void main() {
       );
     });
   }
+  test(
+    'an explicit always choice returns the exact agent option without an automatic grant',
+    () async {
+      expect(
+        await requestAcpPermission(
+          params,
+          cancelled: Completer<void>().future,
+          prompt: (_, _) async => 'always',
+        ),
+        {
+          'outcome': {'outcome': 'selected', 'optionId': 'always'},
+        },
+      );
+    },
+  );
   test('a cancelled request never opens a prompt', () async {
     final stopped = Completer<void>()..complete();
     var prompts = 0;

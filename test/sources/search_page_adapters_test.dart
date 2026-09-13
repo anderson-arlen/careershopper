@@ -8,6 +8,99 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  test(
+    'LinkedIn advances by raw card count and respects the page budget',
+    () async {
+      final offsets = <String?>[];
+      final adapter = LinkedInSearchAdapter(
+        MockClient((request) async {
+          offsets.add(request.url.queryParameters['start']);
+          expect(request.url.queryParameters['f_TPR'], 'r86400');
+          return http.Response(
+            offsets.length == 1
+                ? '${_linkedInCard('1')}${_linkedInCard('1')}${_linkedInCard('2')}'
+                : '${_linkedInCard('2')}${_linkedInCard('3')}',
+            200,
+          );
+        }),
+      );
+      final pages = await adapter
+          .fetch(
+            adapter.compileQuery(
+              const SavedSearchQuery(name: 'Engineer'),
+              const SourceConfig({'max_pages': 2}),
+            ),
+            FetchContext(startedAt: DateTime.now()),
+          )
+          .toList();
+      expect(offsets, ['0', '3']);
+      expect(pages.expand((p) => p.records).map((r) => r['provider_job_id']), [
+        '1',
+        '2',
+        '3',
+      ]);
+      expect(pages.last.hasMoreResults, isNull);
+    },
+  );
+
+  for (final ending in ['empty', 'repeated', 'blocked']) {
+    test('LinkedIn stops early on $ending pages', () async {
+      var calls = 0;
+      final adapter = LinkedInSearchAdapter(
+        MockClient((_) async {
+          calls++;
+          return calls == 1 || ending == 'repeated'
+              ? http.Response(_linkedInCard('1'), 200)
+              : ending == 'blocked'
+              ? http.Response('Access denied', 403)
+              : http.Response('', 200);
+        }),
+      );
+      final records = <Map<String, Object?>>[];
+      Future<void> fetch() async {
+        await for (final page in adapter.fetch(
+          adapter.compileQuery(
+            const SavedSearchQuery(name: 'Engineer'),
+            const SourceConfig({'max_pages': 5}),
+          ),
+          FetchContext(startedAt: DateTime.now()),
+        )) {
+          records.addAll(page.records);
+        }
+      }
+
+      if (ending == 'blocked') {
+        await expectLater(fetch(), throwsA(isA<SourceUnavailableException>()));
+      } else {
+        await fetch();
+      }
+      expect(calls, 2);
+      expect(records, hasLength(1));
+    });
+  }
+
+  test('LinkedIn validates integer page limits', () async {
+    final adapter = LinkedInSearchAdapter(
+      MockClient((_) async => throw StateError('No fetch')),
+    );
+    for (final value in [0, -1, 101, 1.5, '2', null]) {
+      expect(
+        (await adapter.validateConfig(
+          SourceConfig({'max_pages': value}),
+        )).valid,
+        false,
+      );
+    }
+    for (final value in [1, 100]) {
+      expect(
+        (await adapter.validateConfig(
+          SourceConfig({'max_pages': value}),
+        )).valid,
+        true,
+      );
+    }
+  });
+
   test('Indeed uses JobSpy GraphQL and reads only the first page', () async {
     var requests = 0;
     final client = MockClient((request) async {
@@ -174,7 +267,7 @@ void main() {
   });
 
   test(
-    'LinkedIn searches one guest page without login or detail requests',
+    'LinkedIn searches the past 24 hours on one guest page without login or detail requests',
     () async {
       var requests = 0;
       final client = MockClient((request) async {
@@ -185,6 +278,7 @@ void main() {
         );
         expect(request.url.queryParameters['start'], '0');
         expect(request.url.queryParameters['f_WT'], '2');
+        expect(request.url.queryParameters['f_TPR'], 'r86400');
         expect(request.headers['user-agent'], startsWith('CareerShopper/'));
         expect(request.headers, isNot(contains('cookie')));
         return http.Response('''
@@ -244,6 +338,13 @@ void main() {
     );
   });
 }
+
+String _linkedInCard(String id) =>
+    '''
+<div class="base-search-card" data-entity-urn="urn:li:jobPosting:$id">
+<h3 class="base-search-card__title">Engineer</h3>
+<h4 class="base-search-card__subtitle">Example</h4>
+</div>''';
 
 Map<String, Object?> _indeedJob(String key) => {
   'key': key,

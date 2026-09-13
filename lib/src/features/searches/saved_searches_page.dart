@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../../sources/job_source_adapter.dart';
+import '../../domain/search_schedule.dart';
 import '../sources/source_block_notice.dart';
 import '../../storage/configuration_repository.dart';
 import '../../storage/ai_harness_repository.dart';
@@ -139,7 +140,7 @@ class _SavedSearchesPageState extends State<SavedSearchesPage> {
       builder: (context) => AlertDialog(
         title: const Text('Run search now?'),
         content: Text(
-          'CareerShopper will contact the sources attached to “${search.name}”. Your configured AI will analyze new or changed matches. Already evaluated listings are skipped. Provider backoff and blocking responses are respected.',
+          'CareerShopper will contact the source attached to “${search.name}”. Your configured AI will analyze new or changed matches. Already evaluated listings are skipped. Provider backoff and blocking responses are respected.',
         ),
         actions: [
           TextButton(
@@ -396,7 +397,7 @@ class _SearchCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Sources: ${sources.isEmpty ? 'none attached' : sources.map(_sourceLabel).join(' · ')}',
+              'Source: ${sources.isEmpty ? 'none selected' : sources.map(_sourceLabel).join(' · ')}',
             ),
             for (final source in sources.where(
               (source) => source.healthState == 'unavailable',
@@ -404,9 +405,19 @@ class _SearchCard extends StatelessWidget {
               SourceBlockNotice(source: source, configuration: configuration),
             const SizedBox(height: 4),
             Text(
-              '${search.enabled ? 'Active' : 'Paused'} · Requested interval: ${_intervalLabel(search.pollIntervalMinutes)}',
+              '${search.enabled ? 'Active' : 'Paused'} · ${_scheduleLabel(search)}',
               style: Theme.of(context).textTheme.bodySmall,
             ),
+            if (search.enabled && search.nextScheduledAt != null)
+              Text(
+                'Next run: ${search.nextScheduledAt!.toLocal().toString().substring(0, 16)}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            if (search.lastScheduleError != null)
+              Text(
+                'Scheduled run: ${search.lastScheduleError}',
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
             TextButton.icon(
               onPressed: onHistory,
               icon: const Icon(Icons.history),
@@ -472,7 +483,10 @@ class _SavedSearchDialogState extends State<_SavedSearchDialog> {
   late final TextEditingController _currency;
   late final TextEditingController _pollInterval;
   late final TextEditingController _scoreThreshold;
-  late final Set<String> _sourceIds;
+  String? _sourceId;
+  late String _scheduleMode;
+  late final TextEditingController _dailyTime;
+  late final TextEditingController _cron;
   late bool _enabled;
 
   @override
@@ -497,7 +511,25 @@ class _SavedSearchDialogState extends State<_SavedSearchDialog> {
     _scoreThreshold = TextEditingController(
       text: (existing?.scoreThreshold ?? 70).toString(),
     );
-    _sourceIds = {...?existing?.sourceConfigIds};
+    _sourceId = existing?.sourceConfigIds.firstOrNull;
+    if (!widget.sources.any((s) => s.id == _sourceId)) _sourceId = null;
+    if (_sourceId == null && widget.sources.length == 1) {
+      _sourceId = widget.sources.single.id;
+    }
+    final daily = RegExp(
+      r'^(\d+) (\d+) \* \* \*$',
+    ).firstMatch(existing == null ? '0 9 * * *' : existing.scheduleCron ?? '');
+    _scheduleMode = existing == null || daily != null
+        ? 'daily'
+        : existing.scheduleCron == null
+        ? 'interval'
+        : 'cron';
+    _dailyTime = TextEditingController(
+      text: daily == null
+          ? '09:00'
+          : '${daily[2]!.padLeft(2, '0')}:${daily[1]!.padLeft(2, '0')}',
+    );
+    _cron = TextEditingController(text: existing?.scheduleCron ?? '0 9 * * *');
     _enabled = existing?.enabled ?? true;
   }
 
@@ -515,6 +547,8 @@ class _SavedSearchDialogState extends State<_SavedSearchDialog> {
       _minimumCompensation,
       _currency,
       _pollInterval,
+      _dailyTime,
+      _cron,
       _scoreThreshold,
     ]) {
       controller.dispose();
@@ -532,9 +566,16 @@ class _SavedSearchDialogState extends State<_SavedSearchDialog> {
         id: widget.existing?.id,
         name: name,
         enabled: _enabled,
-        pollIntervalMinutes: int.parse(_pollInterval.text.trim()),
+        pollIntervalMinutes: _scheduleMode == 'interval'
+            ? int.parse(_pollInterval.text.trim())
+            : (widget.existing?.pollIntervalMinutes ?? 360),
         scoreThreshold: int.parse(_scoreThreshold.text.trim()),
-        sourceConfigIds: _sourceIds,
+        sourceConfigIds: {_sourceId!},
+        scheduleCron: _scheduleMode == 'interval'
+            ? null
+            : _scheduleMode == 'cron'
+            ? _cron.text.trim()
+            : '${int.parse(_dailyTime.text.split(':')[1])} ${int.parse(_dailyTime.text.split(':')[0])} * * *',
         query: SavedSearchQuery(
           name: name,
           includedTitles: _parseTerms(_titles.text),
@@ -662,48 +703,91 @@ class _SavedSearchDialogState extends State<_SavedSearchDialog> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                TextFormField(
-                  controller: _pollInterval,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Polling interval (minutes)',
-                    helperText: 'Between 30 minutes and 7 days.',
+                DropdownButtonFormField<String>(
+                  initialValue: _scheduleMode,
+                  decoration: const InputDecoration(labelText: 'Schedule'),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'daily',
+                      child: Text('Daily at a time'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'interval',
+                      child: Text('Every interval'),
+                    ),
+                    DropdownMenuItem(value: 'cron', child: Text('Custom cron')),
+                  ],
+                  onChanged: (value) => setState(() => _scheduleMode = value!),
+                ),
+                const SizedBox(height: 12),
+                if (_scheduleMode == 'daily')
+                  TextFormField(
+                    controller: _dailyTime,
+                    decoration: const InputDecoration(
+                      labelText: 'Time (HH:mm)',
+                      helperText:
+                          '24-hour time, using this computer’s local timezone.',
+                    ),
+                    validator: (value) =>
+                        RegExp(
+                          r'^([01]\d|2[0-3]):[0-5]\d$',
+                        ).hasMatch(value ?? '')
+                        ? null
+                        : 'Enter a time such as 09:00 or 17:30.',
                   ),
-                  validator: (value) => _integerRange(value, 30, 10080),
+                if (_scheduleMode == 'interval')
+                  TextFormField(
+                    controller: _pollInterval,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Interval (minutes)',
+                      helperText: 'Between 30 minutes and 7 days.',
+                    ),
+                    validator: (value) => _integerRange(value, 30, 10080),
+                  ),
+                if (_scheduleMode == 'cron')
+                  TextFormField(
+                    controller: _cron,
+                    decoration: const InputDecoration(
+                      labelText: 'Cron expression',
+                      helperText:
+                          'minute hour day month weekday. Example: 0 9,17 * * 1-5',
+                    ),
+                    validator: (value) {
+                      try {
+                        SearchSchedule(value ?? '').nextAfter(DateTime.now());
+                        return null;
+                      } on ArgumentError catch (error) {
+                        return error.message.toString();
+                      }
+                    },
+                  ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Schedules run while CareerShopper is open. Missed runs are combined into one run on reopening. Provider minimum intervals still apply: Indeed 2 hours, LinkedIn 6 hours. Cron uses local time; daylight-saving gaps are skipped and repeated times run once.',
                 ),
                 const SizedBox(height: 16),
-                Text('Sources', style: Theme.of(context).textTheme.titleMedium),
+                DropdownButtonFormField<String>(
+                  initialValue: _sourceId,
+                  decoration: const InputDecoration(labelText: 'Source'),
+                  items: [
+                    for (final source in widget.sources)
+                      DropdownMenuItem(
+                        value: source.id,
+                        child: Text(_sourceLabel(source)),
+                      ),
+                  ],
+                  onChanged: (value) => setState(() => _sourceId = value),
+                  validator: (value) =>
+                      value == null ? 'Choose one source.' : null,
+                ),
                 if (widget.sources.isEmpty)
                   const Padding(
                     padding: EdgeInsets.only(top: 8),
                     child: Text(
-                      'No sources are configured yet. You can save this search and attach sources later.',
+                      'Add a source on the Sources page before saving a search.',
                     ),
-                  )
-                else
-                  for (final source in widget.sources)
-                    CheckboxListTile(
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      title: Text(_sourceLabel(source)),
-                      subtitle: Text(
-                        builtInSourceTypes
-                                .where(
-                                  (type) => type.family == source.sourceFamily,
-                                )
-                                .map((type) => type.displayName)
-                                .firstOrNull ??
-                            source.sourceFamily,
-                      ),
-                      value: _sourceIds.contains(source.id),
-                      onChanged: (checked) => setState(() {
-                        if (checked ?? false) {
-                          _sourceIds.add(source.id);
-                        } else {
-                          _sourceIds.remove(source.id);
-                        }
-                      }),
-                    ),
+                  ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Enabled'),
@@ -1047,4 +1131,16 @@ class _RunDetails extends StatelessWidget {
       ),
     );
   }
+}
+
+String _scheduleLabel(SavedSearchDefinition search) {
+  final cron = search.scheduleCron;
+  if (cron == null) {
+    return 'Every ${_intervalLabel(search.pollIntervalMinutes)}';
+  }
+  final daily = RegExp(r'^(\d+) (\d+) \* \* \*$').firstMatch(cron);
+  if (daily != null) {
+    return 'Daily at ${daily[2]!.padLeft(2, '0')}:${daily[1]!.padLeft(2, '0')} (local time)';
+  }
+  return 'Cron: $cron (local time)';
 }

@@ -123,6 +123,10 @@ class SourcesPage extends StatelessWidget {
                             Text(
                               '${_displayName(source.sourceFamily)} · ${source.boardIdentifier}',
                             ),
+                            if (source.sourceFamily == 'linkedin')
+                              Text(
+                                'Page limit: ${source.values['max_pages'] ?? 1}',
+                              ),
                             if (source.healthState == 'unavailable')
                               SourceBlockNotice(
                                 source: source,
@@ -197,6 +201,7 @@ class _SourceDialogState extends State<_SourceDialog> {
   late bool _enabled;
   late final TextEditingController _employer;
   late final TextEditingController _identifier;
+  late final TextEditingController _maxPages;
 
   BuiltInSourceType get _type =>
       builtInSourceTypes.firstWhere((item) => item.family == _family);
@@ -212,12 +217,16 @@ class _SourceDialogState extends State<_SourceDialog> {
           widget.existing?.boardIdentifier ??
           builtInSourceTypes.first.defaultIdentifier,
     );
+    _maxPages = TextEditingController(
+      text: '${widget.existing?.values['max_pages'] ?? 1}',
+    );
   }
 
   @override
   void dispose() {
     _employer.dispose();
     _identifier.dispose();
+    _maxPages.dispose();
     super.dispose();
   }
 
@@ -230,6 +239,8 @@ class _SourceDialogState extends State<_SourceDialog> {
         sourceFamily: _family,
         enabled: _enabled,
         values: {
+          if (_family == 'linkedin')
+            'max_pages': int.parse(_maxPages.text.trim()),
           if (_type.employerRequired) 'employer_name': _employer.text.trim(),
           if (_type.identifierKey != null)
             _type.identifierKey!: _identifier.text.trim(),
@@ -295,6 +306,24 @@ class _SourceDialogState extends State<_SourceDialog> {
                   leading: Icon(Icons.public),
                   title: Text('Global public job search'),
                   subtitle: Text('No login or account configuration is used.'),
+                ),
+              ],
+              if (_family == 'linkedin') ...[
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _maxPages,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Maximum pages per search',
+                    helperText:
+                        '1–100 pages. Stops early when results run out.',
+                  ),
+                  validator: (value) {
+                    final pages = int.tryParse(value?.trim() ?? '');
+                    return pages == null || pages < 1 || pages > 100
+                        ? 'Enter a whole number from 1 to 100.'
+                        : null;
+                  },
                 ),
               ],
               const SizedBox(height: 8),

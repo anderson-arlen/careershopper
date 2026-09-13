@@ -2,9 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'resume_content_test.dart' as fixture;
+
 import 'package:careershopper/src/domain/job.dart';
 import 'package:careershopper/src/documents/application_exporter.dart';
 import 'package:careershopper/src/documents/document_prompt.dart';
+import 'package:careershopper/src/documents/resume_content.dart';
 import 'package:careershopper/src/ingestion/normalization.dart';
 import 'package:careershopper/src/protocol/acp_runner.dart';
 import 'package:careershopper/src/protocol/mcp_server.dart';
@@ -49,9 +52,12 @@ void main() {
       ),
     )).jobId;
     factId = await ProfileRepository(db).saveCareerFact(
-      const CareerFactDraft(
-        kind: 'identity',
-        value: {'name': 'Alex Example'},
+      CareerFactDraft(
+        kind: resumeContentKind,
+        value: {
+          ...ResumeContent.empty(),
+          'header': {'name': 'Alex Example', 'headline': '', 'contact': ''},
+        },
         visibility: 'resume',
       ),
       actor: 'user',
@@ -62,6 +68,329 @@ void main() {
     markdown = '# Alex Example <!-- facts: ${fact.currentRevisionId} -->';
   });
   tearDown(() => db.close());
+
+  test(
+    'structured short-ID plans submit both complete documents without Markdown repair',
+    () async {
+      final profile = ProfileRepository(db);
+      final existing = (await profile.watchCareerFacts().first).single;
+      await profile.saveCareerFact(
+        CareerFactDraft(
+          id: existing.id,
+          kind: resumeContentKind,
+          value: fixture.fixedContent(),
+          visibility: 'resume',
+          expectedRevisionId: existing.revisionId,
+        ),
+        actor: 'user',
+      );
+      final runner = _Runner();
+      final harness = _harness(db, runner: runner);
+      await harness.saveProfile(
+        const AiHarnessProfileDraft(
+          name: 'Test',
+          executable: '/bin/true',
+          arguments: [],
+        ),
+      );
+      final queued = await harness.queueApplication(jobId);
+      await runner.started.future;
+      final server = McpServer(db, workOrderId: queued.workOrderId);
+      expect(runner.request!.prompt, contains('generation_content'));
+      expect(runner.request!.prompt, isNot(contains('EVERY block')));
+      expect(runner.request!.prompt, isNot(contains('summary_markdown')));
+      final draft = fixture.structuredPlan()
+        ..['core_skills'] = [
+          {
+            'label': 'Languages:',
+            'text': 'Dart, Go.',
+            'support_ids': ['F6'],
+          },
+          {
+            'label': 'Delivery:',
+            'text': 'Team leadership and CI/CD workflow ownership.',
+            'support_ids': ['F2', 'F3'],
+          },
+        ];
+      final letter = {
+        'paragraphs': [
+          {
+            'text':
+                'I am interested in the engineering role because it calls for experience delivering software and supporting a team. At Current Company, I implemented a search feature and added automated checks.',
+            'support_ids': ['F2', 'F3'],
+          },
+          {
+            'text':
+                'My public project combines Dart and Go with a local database. I would welcome the opportunity to discuss how that hands-on development work and my experience updating a reporting tool at Previous Company could support your engineering priorities.',
+            'support_ids': ['F5', 'F6'],
+          },
+        ],
+      };
+      final bad = await _rpc(server, 'application_materials_submit', {
+        'job_id': jobId,
+        'resume_plan': {
+          ...draft,
+          'selected_ids': ['F999'],
+        },
+        'cover_letter_plan': letter,
+      });
+      expect(bad['error'].toString(), contains('F999'));
+      expect(await materials.watch(jobId).first, isNull);
+      final submitted = await _rpc(server, 'application_materials_submit', {
+        'job_id': jobId,
+        'resume_plan': draft,
+        'cover_letter_plan': letter,
+      });
+      expect(submitted, isNot(contains('error')), reason: submitted.toString());
+      final id =
+          ((submitted['result'] as Map)['structuredContent']
+                  as Map)['material_set_id']
+              as String;
+      final saved = await materials.get(id);
+      expect(
+        saved.resumeMarkdown,
+        contains('**Languages:** Dart, Go. <!-- facts:'),
+      );
+      expect(saved.resumeMarkdown, contains('**Delivery:** Team leadership'));
+      expect(saved.coverLetterMarkdown, contains('Dear Hiring Team,'));
+      expect(saved.resumeMarkdown, isNot(contains('facts: F')));
+      final tools = McpUiTools(db);
+      final catalog = await tools.call(
+        'resume_content_get',
+        {},
+        workOrderId: queued.workOrderId,
+      );
+      expect(catalog.keys, contains('generation_content'));
+      expect(catalog.keys, isNot(contains('revision_id')));
+      expect(catalog.keys, isNot(contains('content')));
+      runner.finished.complete();
+      await harness
+          .watchMaterialStatus(jobId)
+          .firstWhere((s) => s == 'completed');
+      expect(
+        (await materials.watch(jobId).first)!.resume,
+        saved.resumeMarkdown,
+      );
+    },
+  );
+
+  test(
+    'changed source cannot reinterpret short IDs in an active work order',
+    () async {
+      final runner = _Runner();
+      final harness = _harness(db, runner: runner);
+      await harness.saveProfile(
+        const AiHarnessProfileDraft(
+          name: 'Test',
+          executable: '/bin/true',
+          arguments: [],
+        ),
+      );
+      final queued = await harness.queueApplication(jobId);
+      await runner.started.future;
+      final profile = ProfileRepository(db);
+      final existing = (await profile.watchCareerFacts().first).single;
+      await profile.saveCareerFact(
+        CareerFactDraft(
+          id: existing.id,
+          kind: resumeContentKind,
+          value: fixture.fixedContent(),
+          visibility: 'resume',
+          expectedRevisionId: existing.revisionId,
+        ),
+        actor: 'user',
+      );
+      final response = await _rpc(
+        McpServer(db, workOrderId: queued.workOrderId),
+        'application_materials_submit',
+        {
+          'job_id': jobId,
+          'resume_plan': fixture.structuredPlan(),
+          'cover_letter_plan': {'paragraphs': []},
+        },
+      );
+      expect(
+        response['error'].toString(),
+        contains('changed since this work order'),
+      );
+      for (final name in ['resume_content_get', 'resume_compose']) {
+        await expectLater(
+          McpUiTools(db).call(
+            name,
+            name == 'resume_compose'
+                ? {'resume_plan': fixture.structuredPlan()}
+                : {},
+            workOrderId: queued.workOrderId,
+          ),
+          throwsStateError,
+        );
+      }
+      runner.finished.complete();
+      await harness.watchMaterialStatus(jobId).firstWhere((s) => s == 'failed');
+      expect(await materials.watch(jobId).first, isNull);
+    },
+  );
+
+  test(
+    'fresh generation bypasses failed session and checkpoint while preserving previous materials',
+    () async {
+      await jobs.setReviewState(
+        jobId,
+        ReviewState.approved,
+        actor: 'user',
+        origin: 'test',
+      );
+      final previous = await materials.save(
+        jobId: jobId,
+        resume: markdown,
+        coverLetter: markdown,
+      );
+      final first = _harness(
+        db,
+        runner: _WorkflowRunner((request) async {
+          await request.onSessionStarted!('old-session');
+          throw StateError('Interrupted old draft');
+        }),
+      );
+      await first.saveProfile(
+        const AiHarnessProfileDraft(
+          name: 'Writer',
+          executable: '/bin/true',
+          arguments: [],
+        ),
+      );
+      final old = await first.queueApplication(jobId);
+      await first.watchMaterialStatus(jobId).firstWhere((s) => s == 'failed');
+      await pumpEventQueue();
+      final profile = ProfileRepository(db);
+      final fact = (await profile.watchCareerFacts().first).single;
+      await profile.saveCareerFact(
+        CareerFactDraft(
+          id: fact.id,
+          expectedRevisionId: fact.revisionId,
+          kind: resumeContentKind,
+          value: {
+            ...ResumeContent.empty(),
+            'header': {'name': 'Current Applicant', 'contact': ''},
+          },
+          visibility: 'resume',
+        ),
+        actor: 'user',
+      );
+      final runner = _Runner();
+      final fresh = _harness(db, runner: runner);
+      final next = await fresh.queueApplication(jobId, fromScratch: true);
+      await runner.started.future;
+      expect(next.workOrderId, isNot(old.workOrderId));
+      expect(runner.request!.existingSessionId, isNull);
+      expect(runner.request!.prompt, contains('Current Applicant'));
+      expect(runner.request!.prompt, isNot(contains('Resume the interrupted')));
+      final oldRow = await (db.select(
+        db.aiWorkOrders,
+      )..where((r) => r.id.equals(old.workOrderId))).getSingle();
+      expect(oldRow.acpSessionId, 'old-session');
+      expect(oldRow.status, 'failed');
+      expect((await materials.watch(jobId).first)!.id, previous);
+      await expectLater(
+        fresh.queueApplication(jobId, fromScratch: true),
+        throwsStateError,
+      );
+      expect((await db.select(db.aiWorkOrders).get()), hasLength(2));
+      runner.finished.complete();
+      await fresh.watchMaterialStatus(jobId).firstWhere((s) => s == 'failed');
+      expect((await materials.watch(jobId).first)!.id, previous);
+    },
+  );
+
+  test(
+    'scoped resume plans assemble fixed wording and reject later AI header edits',
+    () async {
+      final runner = _Runner();
+      final harness = _harness(db, runner: runner);
+      await harness.saveProfile(
+        const AiHarnessProfileDraft(
+          name: 'Test',
+          executable: '/bin/true',
+          arguments: [],
+        ),
+      );
+      final queued = await harness.queueApplication(jobId);
+      await runner.started.future;
+      final revision = RegExp(
+        r'<!-- facts: (.*?) -->',
+      ).firstMatch(markdown)!.group(1)!;
+      final server = McpServer(db, workOrderId: queued.workOrderId);
+      final result = await _rpc(server, 'application_materials_submit', {
+        'job_id': jobId,
+        'resume_plan': {
+          'content_revision_id': revision,
+          'professional_headline': '',
+          'summary_markdown':
+              'Alex built backend services for customer account management, taking responsibility for requirements, design, implementation, testing, deployment, and production support. The work included collaborating with product colleagues to understand customer needs and making clear technical decisions about reliable service behavior. <!-- facts: F1 -->',
+          'direct_match_markdown':
+              '- **Service ownership:** Built and maintained production systems. <!-- facts: F1 -->',
+          'core_skills_markdown':
+              'Alex also built database integrations, investigated production issues, documented operational procedures, and reviewed changes with other engineers to keep the services understandable and maintainable. <!-- facts: F1 -->',
+          'work_history': [],
+        },
+        'cover_letter_markdown': _completeMarkdown(markdown),
+      });
+      expect(result, isNot(contains('error')));
+      final id =
+          ((result['result'] as Map)['structuredContent']
+              as Map)['material_set_id'];
+      expect(
+        (await materials.get(id as String)).resumeMarkdown,
+        _completeMarkdown(markdown),
+      );
+      final changed = await _rpc(server, 'application_materials_submit', {
+        'job_id': jobId,
+        'base_material_set_id': id,
+        'edits': [
+          {
+            'document': 'resume',
+            'old_text': '# Alex Example',
+            'new_text': '# **Alex Example**',
+          },
+        ],
+      });
+      expect(changed['error'].toString(), contains('Fixed resume content'));
+      expect(
+        await _rpc(server, 'application_materials_submit', {
+          'job_id': jobId,
+          'base_material_set_id': id,
+        }),
+        isNot(contains('error')),
+      );
+      runner.finished.complete();
+      await harness
+          .watchMaterialStatus(jobId)
+          .firstWhere((s) => s == 'completed');
+      expect(
+        (await materials.watch(jobId).first)!.resume,
+        _completeMarkdown(markdown),
+      );
+    },
+  );
+
+  test(
+    'missing fixed wording stops generation before launching the writer',
+    () async {
+      await ProfileRepository(db).retireCareerFact(factId, actor: 'user');
+      final runner = _Runner();
+      final harness = _harness(db, runner: runner);
+      await harness.saveProfile(
+        const AiHarnessProfileDraft(
+          name: 'Test',
+          executable: '/bin/true',
+          arguments: [],
+        ),
+      );
+      await harness.queueApplication(jobId);
+      await harness.watchMaterialStatus(jobId).firstWhere((s) => s == 'failed');
+      expect(runner.request, isNull);
+    },
+  );
 
   test(
     'MCP Apply requests completion confirmation without changing state',
@@ -372,6 +701,11 @@ void main() {
       await harness.queueApplication(jobId);
       await runner.started.future;
       expect(runner.request!.prompt, contains(defaultDocumentGenerationPrompt));
+      expect(runner.request!.prompt, contains(companyContextInstructions));
+      expect(
+        runner.request!.prompt,
+        contains('available read-only web or browser tools'),
+      );
       expect(
         runner.request!.prompt,
         isNot(contains('name, actual product/platform type')),
@@ -520,7 +854,7 @@ void main() {
           db,
           queued.workOrderId,
           jobId,
-          markdown,
+          _completeMarkdown(markdown),
           tool: 'application_materials_validate',
         ),
         isNot(contains('error')),
@@ -528,7 +862,10 @@ void main() {
       expect(await db.select(db.materialSets).get(), hasLength(1));
       expect(await harness.watchMaterialStatus(jobId).first, 'running');
       final response = await _submit(db, queued.workOrderId, jobId, markdown);
-      expect(response['error'].toString(), contains('incomplete'));
+      expect(
+        response['error'].toString(),
+        contains('summary_markdown is required'),
+      );
       expect(await db.select(db.materialSets).get(), hasLength(1));
       runner.finished.complete();
       await harness
@@ -774,7 +1111,7 @@ void main() {
           db,
           queued.workOrderId,
           jobId,
-          markdown,
+          _completeMarkdown(markdown),
           tool: 'application_materials_validate',
         ),
         isNot(contains('error')),
@@ -826,9 +1163,12 @@ void main() {
         }
         writerTurns++;
         if (writerTurns == 1) {
-          expect(request.prompt, contains('Confirmed profile:'));
+          expect(request.prompt, contains('Generation content (short IDs'));
           expect(request.prompt, contains('Alex Example'));
-          expect(request.prompt, contains('Do not probe individual blocks'));
+          expect(
+            request.prompt,
+            contains('No preliminary validation or Markdown drafting'),
+          );
           await request.onSessionStarted!('original-writer');
         } else {
           expect(request.existingSessionId, 'original-writer');
@@ -1208,129 +1548,30 @@ void main() {
     },
   );
 
-  test(
-    'employer attribution rejects mixed cover-letter paragraphs and misplaced resume bullets',
-    () async {
-      final refs = await _seedAttributionFacts(db);
-      final wrong =
-          'At Northwind, I reviewed a change request. <!-- facts: ${refs['team-b']} -->';
-      await expectLater(
-        materials.validate(markdown, '$markdown\n\n$wrong'),
-        throwsA(
-          isA<StateError>().having(
-            (e) => e.message,
-            'diagnostic',
-            allOf(
-              contains('Cover letter, block 2'),
-              contains('Northwind'),
-              contains('Contoso'),
-              contains('team-b'),
-            ),
-          ),
-        ),
-      );
-      final heading =
-          '### Northwind, Engineer <!-- facts: ${refs['employer-a']} -->';
-      final misplaced =
-          '- Reviewed a change request. <!-- facts: ${refs['team-b']} -->';
-      await expectLater(
-        materials.validate('$markdown\n\n$heading\n\n$misplaced', markdown),
-        throwsA(
-          isA<StateError>().having(
-            (e) => e.message,
-            'diagnostic',
-            contains('employer attribution mismatch'),
-          ),
-        ),
-      );
-      await expectLater(
-        materials.validate(
-          markdown,
-          '$markdown\n\nAt NW, I reviewed a change request. <!-- facts: ${refs['team-b']} -->',
-        ),
-        throwsStateError,
-      );
-      await expectLater(
-        materials.validate(
-          markdown,
-          '$markdown\n\nAt Northwind, I built the client project. <!-- facts: ${refs['project-work-b']} -->',
-        ),
-        throwsStateError,
-      );
-      // Explicit attribution permits a comparison without transferring metrics.
-      await materials.validate(
+  test('archived facts cannot override the current resume evidence', () async {
+    final refs = await _seedAttributionFacts(db);
+    await expectLater(
+      materials.validate(
         markdown,
-        '$markdown\n\nAt Northwind, I led up to five people. Earlier, at Contoso, I led three. <!-- facts: ${refs['team-a']}, ${refs['team-b']} -->',
-      );
-      await materials.validate(
-        markdown,
-        '$markdown\n\nLed teams of three and up to five people across my career. <!-- facts: ${refs['team-a']}, ${refs['team-b']} -->',
-      );
-      // Shared skills carry no employer-specific ownership claim.
-      await materials.validate(
-        '$markdown\n\n$heading\n\n- Led up to five people using shared development tools. <!-- facts: ${refs['team-a']}, ${refs['shared-skill']} -->',
-        markdown,
-      );
-      // A new section clears the employer scope inherited from a work heading.
-      await materials.validate(
-        '$markdown\n\n$heading\n\n## Earlier experience <!-- facts: ${refs['employer-b']} -->\n\n$misplaced',
-        markdown,
-      );
-    },
-  );
-
-  test(
-    'MCP rejects wrong employer attribution before staging and accepts a supported correction',
-    () async {
-      final refs = await _seedAttributionFacts(db);
-      final runner = _Runner();
-      final harness = _harness(db, runner: runner);
-      await harness.saveProfile(
-        const AiHarnessProfileDraft(
-          name: 'Test',
-          executable: '/bin/true',
-          arguments: [],
+        '$markdown\n\nReviewed a change request. <!-- facts: ${refs['team-b']} -->',
+      ),
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          contains('archived'),
         ),
-      );
-      final queued = await harness.queueApplication(jobId);
-      await runner.started.future;
-      final server = McpServer(db, workOrderId: queued.workOrderId);
-      final source = _completeMarkdown(markdown);
-      final bad =
-          '$source\n\nAt Northwind, I reviewed a change request. <!-- facts: ${refs['team-b']} -->';
-      final failed = await _rpc(server, 'application_materials_submit', {
-        'job_id': jobId,
-        'resume_markdown': source,
-        'cover_letter_markdown': bad,
-      });
-      expect(
-        failed['error'].toString(),
-        contains('employer attribution mismatch'),
-      );
-      expect(await db.select(db.materialSets).get(), isEmpty);
-      final handle = ((failed['error'] as Map)['data'] as Map)['draft_id'];
-      final repaired = await _rpc(server, 'application_materials_submit', {
-        'job_id': jobId,
-        'draft_id': handle,
-        'edits': [
-          {
-            'document': 'cover_letter',
-            'old_text': 'At Northwind, I reviewed a change request.',
-            'new_text': 'At Contoso, I reviewed a change request.',
-          },
-        ],
-      });
-      expect(repaired, isNot(contains('error')));
-      runner.finished.complete();
-      await harness
-          .watchMaterialStatus(jobId)
-          .firstWhere((s) => s == 'completed');
-      expect(
-        (await materials.watch(jobId).first)!.coverLetter,
-        contains('At Contoso, I reviewed a change request.'),
-      );
-    },
-  );
+      ),
+    );
+    // The old records remain available for historical document references.
+    expect(
+      await (db.select(
+        db.careerFactRevisions,
+      )..where((r) => r.id.equals(refs['team-b']!))).get(),
+      hasLength(1),
+    );
+    await materials.validate(markdown, markdown);
+  });
 
   test(
     'short citations survive reconnects and review edits and store exact revisions',
@@ -1354,7 +1595,7 @@ void main() {
         r'<!-- facts: (.*?) -->',
       ).firstMatch(markdown)!.group(1)!;
       expect(refs, {'F1': revision});
-      expect(runner.request!.prompt, contains('"citation_ref":"F1"'));
+      expect(runner.request!.prompt, contains('generation_content'));
       expect(runner.request!.prompt, isNot(contains(revision)));
       final source = _completeMarkdown(markdown.replaceAll(revision, 'F1'));
       final server = McpServer(db, workOrderId: queued.workOrderId);
@@ -1384,8 +1625,10 @@ void main() {
           'edits': [
             {
               'document': 'resume',
-              'old_text': '# Alex Example <!-- facts: F1 -->',
-              'new_text': '# **Alex Example** <!-- facts: F1 -->',
+              'old_text':
+                  'Built and maintained production systems. <!-- facts: F1 -->',
+              'new_text':
+                  'Owned and maintained production systems. <!-- facts: F1 -->',
             },
           ],
         },
@@ -1396,7 +1639,10 @@ void main() {
           .watchMaterialStatus(jobId)
           .firstWhere((s) => s == 'completed');
       final saved = (await materials.watch(jobId).first)!;
-      expect(saved.resume, contains('# **Alex Example**'));
+      expect(
+        saved.resume,
+        contains('Owned and maintained production systems.'),
+      );
       expect(saved.resume, isNot(contains('facts: F1')));
       expect(saved.resume, contains(revision));
       expect(
@@ -1445,9 +1691,11 @@ void main() {
         'application_materials_submit',
         {
           'job_id': jobId,
-          'resume_markdown': _completeMarkdown('# Alex <!-- facts: F1 -->'),
+          'resume_markdown': _completeMarkdown(
+            '# Alex Example <!-- facts: F1 -->',
+          ),
           'cover_letter_markdown': _completeMarkdown(
-            '# Alex <!-- facts: F1 -->',
+            '# Alex Example <!-- facts: F1 -->',
           ),
         },
       );
@@ -1615,8 +1863,8 @@ void main() {
         'edits': [
           {
             'document': 'resume',
-            'old_text': '# Alex Example',
-            'new_text': '# **Alex Example**',
+            'old_text': 'Built and maintained production systems.',
+            'new_text': 'Owned and maintained production systems.',
           },
         ],
       });
@@ -1627,7 +1875,7 @@ void main() {
               as String;
       expect(
         (await materials.get(revisionId)).resumeMarkdown,
-        contains('# **Alex Example**'),
+        contains('Owned and maintained production systems.'),
       );
       expect((await materials.get(baseId)).resumeMarkdown, complete);
       runner.finished.complete();
@@ -1758,7 +2006,7 @@ void main() {
       }
       expect(
         jsonEncode(await _rpc(McpServer(db), 'profile_get', {})),
-        contains('Secret Widget'),
+        isNot(contains('Secret Widget')),
       );
       runner.finished.complete();
       await harness.watchMaterialStatus(jobId).firstWhere((s) => s == 'failed');
@@ -1804,8 +2052,9 @@ void main() {
 
 String _completeMarkdown(String name) {
   final citation = RegExp(r'<!-- facts: .*? -->').firstMatch(name)!.group(0)!;
-  return '$name\n\n## Experience $citation\n\n'
+  return '---\ndocument_type: resume\nfooter: Alex Example\npage_numbers: true\n--- $citation\n\n$name\n\n'
       'Alex built backend services for customer account management, taking responsibility for requirements, design, implementation, testing, deployment, and production support. The work included collaborating with product colleagues to understand customer needs and making clear technical decisions about reliable service behavior. $citation\n\n'
+      '## DIRECT MATCH $citation\n\n- **Service ownership:** Built and maintained production systems. $citation\n\n## CORE SKILLS $citation\n\n'
       'Alex also built database integrations, investigated production issues, documented operational procedures, and reviewed changes with other engineers to keep the services understandable and maintainable. $citation';
 }
 

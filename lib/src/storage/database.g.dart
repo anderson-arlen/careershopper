@@ -53,6 +53,41 @@ class $SavedSearchesTable extends SavedSearches
     requiredDuringInsert: false,
     defaultValue: const Constant(60),
   );
+  static const VerificationMeta _scheduleCronMeta = const VerificationMeta(
+    'scheduleCron',
+  );
+  @override
+  late final GeneratedColumn<String> scheduleCron = GeneratedColumn<String>(
+    'schedule_cron',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _nextScheduledAtMeta = const VerificationMeta(
+    'nextScheduledAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> nextScheduledAt =
+      GeneratedColumn<DateTime>(
+        'next_scheduled_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _lastScheduleErrorMeta = const VerificationMeta(
+    'lastScheduleError',
+  );
+  @override
+  late final GeneratedColumn<String> lastScheduleError =
+      GeneratedColumn<String>(
+        'last_schedule_error',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _scoreThresholdMeta = const VerificationMeta(
     'scoreThreshold',
   );
@@ -104,6 +139,9 @@ class $SavedSearchesTable extends SavedSearches
     name,
     enabled,
     pollIntervalMinutes,
+    scheduleCron,
+    nextScheduledAt,
+    lastScheduleError,
     scoreThreshold,
     queryJson,
     createdAt,
@@ -146,6 +184,33 @@ class $SavedSearchesTable extends SavedSearches
         pollIntervalMinutes.isAcceptableOrUnknown(
           data['poll_interval_minutes']!,
           _pollIntervalMinutesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('schedule_cron')) {
+      context.handle(
+        _scheduleCronMeta,
+        scheduleCron.isAcceptableOrUnknown(
+          data['schedule_cron']!,
+          _scheduleCronMeta,
+        ),
+      );
+    }
+    if (data.containsKey('next_scheduled_at')) {
+      context.handle(
+        _nextScheduledAtMeta,
+        nextScheduledAt.isAcceptableOrUnknown(
+          data['next_scheduled_at']!,
+          _nextScheduledAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_schedule_error')) {
+      context.handle(
+        _lastScheduleErrorMeta,
+        lastScheduleError.isAcceptableOrUnknown(
+          data['last_schedule_error']!,
+          _lastScheduleErrorMeta,
         ),
       );
     }
@@ -207,6 +272,18 @@ class $SavedSearchesTable extends SavedSearches
         DriftSqlType.int,
         data['${effectivePrefix}poll_interval_minutes'],
       )!,
+      scheduleCron: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}schedule_cron'],
+      ),
+      nextScheduledAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}next_scheduled_at'],
+      ),
+      lastScheduleError: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_schedule_error'],
+      ),
       scoreThreshold: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}score_threshold'],
@@ -237,6 +314,9 @@ class SavedSearchRow extends DataClass implements Insertable<SavedSearchRow> {
   final String name;
   final bool enabled;
   final int pollIntervalMinutes;
+  final String? scheduleCron;
+  final DateTime? nextScheduledAt;
+  final String? lastScheduleError;
   final int scoreThreshold;
   final String queryJson;
   final DateTime createdAt;
@@ -246,6 +326,9 @@ class SavedSearchRow extends DataClass implements Insertable<SavedSearchRow> {
     required this.name,
     required this.enabled,
     required this.pollIntervalMinutes,
+    this.scheduleCron,
+    this.nextScheduledAt,
+    this.lastScheduleError,
     required this.scoreThreshold,
     required this.queryJson,
     required this.createdAt,
@@ -258,6 +341,15 @@ class SavedSearchRow extends DataClass implements Insertable<SavedSearchRow> {
     map['name'] = Variable<String>(name);
     map['enabled'] = Variable<bool>(enabled);
     map['poll_interval_minutes'] = Variable<int>(pollIntervalMinutes);
+    if (!nullToAbsent || scheduleCron != null) {
+      map['schedule_cron'] = Variable<String>(scheduleCron);
+    }
+    if (!nullToAbsent || nextScheduledAt != null) {
+      map['next_scheduled_at'] = Variable<DateTime>(nextScheduledAt);
+    }
+    if (!nullToAbsent || lastScheduleError != null) {
+      map['last_schedule_error'] = Variable<String>(lastScheduleError);
+    }
     map['score_threshold'] = Variable<int>(scoreThreshold);
     map['query_json'] = Variable<String>(queryJson);
     map['created_at'] = Variable<DateTime>(createdAt);
@@ -271,6 +363,15 @@ class SavedSearchRow extends DataClass implements Insertable<SavedSearchRow> {
       name: Value(name),
       enabled: Value(enabled),
       pollIntervalMinutes: Value(pollIntervalMinutes),
+      scheduleCron: scheduleCron == null && nullToAbsent
+          ? const Value.absent()
+          : Value(scheduleCron),
+      nextScheduledAt: nextScheduledAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(nextScheduledAt),
+      lastScheduleError: lastScheduleError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastScheduleError),
       scoreThreshold: Value(scoreThreshold),
       queryJson: Value(queryJson),
       createdAt: Value(createdAt),
@@ -290,6 +391,11 @@ class SavedSearchRow extends DataClass implements Insertable<SavedSearchRow> {
       pollIntervalMinutes: serializer.fromJson<int>(
         json['pollIntervalMinutes'],
       ),
+      scheduleCron: serializer.fromJson<String?>(json['scheduleCron']),
+      nextScheduledAt: serializer.fromJson<DateTime?>(json['nextScheduledAt']),
+      lastScheduleError: serializer.fromJson<String?>(
+        json['lastScheduleError'],
+      ),
       scoreThreshold: serializer.fromJson<int>(json['scoreThreshold']),
       queryJson: serializer.fromJson<String>(json['queryJson']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -304,6 +410,9 @@ class SavedSearchRow extends DataClass implements Insertable<SavedSearchRow> {
       'name': serializer.toJson<String>(name),
       'enabled': serializer.toJson<bool>(enabled),
       'pollIntervalMinutes': serializer.toJson<int>(pollIntervalMinutes),
+      'scheduleCron': serializer.toJson<String?>(scheduleCron),
+      'nextScheduledAt': serializer.toJson<DateTime?>(nextScheduledAt),
+      'lastScheduleError': serializer.toJson<String?>(lastScheduleError),
       'scoreThreshold': serializer.toJson<int>(scoreThreshold),
       'queryJson': serializer.toJson<String>(queryJson),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -316,6 +425,9 @@ class SavedSearchRow extends DataClass implements Insertable<SavedSearchRow> {
     String? name,
     bool? enabled,
     int? pollIntervalMinutes,
+    Value<String?> scheduleCron = const Value.absent(),
+    Value<DateTime?> nextScheduledAt = const Value.absent(),
+    Value<String?> lastScheduleError = const Value.absent(),
     int? scoreThreshold,
     String? queryJson,
     DateTime? createdAt,
@@ -325,6 +437,13 @@ class SavedSearchRow extends DataClass implements Insertable<SavedSearchRow> {
     name: name ?? this.name,
     enabled: enabled ?? this.enabled,
     pollIntervalMinutes: pollIntervalMinutes ?? this.pollIntervalMinutes,
+    scheduleCron: scheduleCron.present ? scheduleCron.value : this.scheduleCron,
+    nextScheduledAt: nextScheduledAt.present
+        ? nextScheduledAt.value
+        : this.nextScheduledAt,
+    lastScheduleError: lastScheduleError.present
+        ? lastScheduleError.value
+        : this.lastScheduleError,
     scoreThreshold: scoreThreshold ?? this.scoreThreshold,
     queryJson: queryJson ?? this.queryJson,
     createdAt: createdAt ?? this.createdAt,
@@ -338,6 +457,15 @@ class SavedSearchRow extends DataClass implements Insertable<SavedSearchRow> {
       pollIntervalMinutes: data.pollIntervalMinutes.present
           ? data.pollIntervalMinutes.value
           : this.pollIntervalMinutes,
+      scheduleCron: data.scheduleCron.present
+          ? data.scheduleCron.value
+          : this.scheduleCron,
+      nextScheduledAt: data.nextScheduledAt.present
+          ? data.nextScheduledAt.value
+          : this.nextScheduledAt,
+      lastScheduleError: data.lastScheduleError.present
+          ? data.lastScheduleError.value
+          : this.lastScheduleError,
       scoreThreshold: data.scoreThreshold.present
           ? data.scoreThreshold.value
           : this.scoreThreshold,
@@ -354,6 +482,9 @@ class SavedSearchRow extends DataClass implements Insertable<SavedSearchRow> {
           ..write('name: $name, ')
           ..write('enabled: $enabled, ')
           ..write('pollIntervalMinutes: $pollIntervalMinutes, ')
+          ..write('scheduleCron: $scheduleCron, ')
+          ..write('nextScheduledAt: $nextScheduledAt, ')
+          ..write('lastScheduleError: $lastScheduleError, ')
           ..write('scoreThreshold: $scoreThreshold, ')
           ..write('queryJson: $queryJson, ')
           ..write('createdAt: $createdAt, ')
@@ -368,6 +499,9 @@ class SavedSearchRow extends DataClass implements Insertable<SavedSearchRow> {
     name,
     enabled,
     pollIntervalMinutes,
+    scheduleCron,
+    nextScheduledAt,
+    lastScheduleError,
     scoreThreshold,
     queryJson,
     createdAt,
@@ -381,6 +515,9 @@ class SavedSearchRow extends DataClass implements Insertable<SavedSearchRow> {
           other.name == this.name &&
           other.enabled == this.enabled &&
           other.pollIntervalMinutes == this.pollIntervalMinutes &&
+          other.scheduleCron == this.scheduleCron &&
+          other.nextScheduledAt == this.nextScheduledAt &&
+          other.lastScheduleError == this.lastScheduleError &&
           other.scoreThreshold == this.scoreThreshold &&
           other.queryJson == this.queryJson &&
           other.createdAt == this.createdAt &&
@@ -392,6 +529,9 @@ class SavedSearchesCompanion extends UpdateCompanion<SavedSearchRow> {
   final Value<String> name;
   final Value<bool> enabled;
   final Value<int> pollIntervalMinutes;
+  final Value<String?> scheduleCron;
+  final Value<DateTime?> nextScheduledAt;
+  final Value<String?> lastScheduleError;
   final Value<int> scoreThreshold;
   final Value<String> queryJson;
   final Value<DateTime> createdAt;
@@ -402,6 +542,9 @@ class SavedSearchesCompanion extends UpdateCompanion<SavedSearchRow> {
     this.name = const Value.absent(),
     this.enabled = const Value.absent(),
     this.pollIntervalMinutes = const Value.absent(),
+    this.scheduleCron = const Value.absent(),
+    this.nextScheduledAt = const Value.absent(),
+    this.lastScheduleError = const Value.absent(),
     this.scoreThreshold = const Value.absent(),
     this.queryJson = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -413,6 +556,9 @@ class SavedSearchesCompanion extends UpdateCompanion<SavedSearchRow> {
     required String name,
     this.enabled = const Value.absent(),
     this.pollIntervalMinutes = const Value.absent(),
+    this.scheduleCron = const Value.absent(),
+    this.nextScheduledAt = const Value.absent(),
+    this.lastScheduleError = const Value.absent(),
     this.scoreThreshold = const Value.absent(),
     required String queryJson,
     required DateTime createdAt,
@@ -428,6 +574,9 @@ class SavedSearchesCompanion extends UpdateCompanion<SavedSearchRow> {
     Expression<String>? name,
     Expression<bool>? enabled,
     Expression<int>? pollIntervalMinutes,
+    Expression<String>? scheduleCron,
+    Expression<DateTime>? nextScheduledAt,
+    Expression<String>? lastScheduleError,
     Expression<int>? scoreThreshold,
     Expression<String>? queryJson,
     Expression<DateTime>? createdAt,
@@ -440,6 +589,9 @@ class SavedSearchesCompanion extends UpdateCompanion<SavedSearchRow> {
       if (enabled != null) 'enabled': enabled,
       if (pollIntervalMinutes != null)
         'poll_interval_minutes': pollIntervalMinutes,
+      if (scheduleCron != null) 'schedule_cron': scheduleCron,
+      if (nextScheduledAt != null) 'next_scheduled_at': nextScheduledAt,
+      if (lastScheduleError != null) 'last_schedule_error': lastScheduleError,
       if (scoreThreshold != null) 'score_threshold': scoreThreshold,
       if (queryJson != null) 'query_json': queryJson,
       if (createdAt != null) 'created_at': createdAt,
@@ -453,6 +605,9 @@ class SavedSearchesCompanion extends UpdateCompanion<SavedSearchRow> {
     Value<String>? name,
     Value<bool>? enabled,
     Value<int>? pollIntervalMinutes,
+    Value<String?>? scheduleCron,
+    Value<DateTime?>? nextScheduledAt,
+    Value<String?>? lastScheduleError,
     Value<int>? scoreThreshold,
     Value<String>? queryJson,
     Value<DateTime>? createdAt,
@@ -464,6 +619,9 @@ class SavedSearchesCompanion extends UpdateCompanion<SavedSearchRow> {
       name: name ?? this.name,
       enabled: enabled ?? this.enabled,
       pollIntervalMinutes: pollIntervalMinutes ?? this.pollIntervalMinutes,
+      scheduleCron: scheduleCron ?? this.scheduleCron,
+      nextScheduledAt: nextScheduledAt ?? this.nextScheduledAt,
+      lastScheduleError: lastScheduleError ?? this.lastScheduleError,
       scoreThreshold: scoreThreshold ?? this.scoreThreshold,
       queryJson: queryJson ?? this.queryJson,
       createdAt: createdAt ?? this.createdAt,
@@ -486,6 +644,15 @@ class SavedSearchesCompanion extends UpdateCompanion<SavedSearchRow> {
     }
     if (pollIntervalMinutes.present) {
       map['poll_interval_minutes'] = Variable<int>(pollIntervalMinutes.value);
+    }
+    if (scheduleCron.present) {
+      map['schedule_cron'] = Variable<String>(scheduleCron.value);
+    }
+    if (nextScheduledAt.present) {
+      map['next_scheduled_at'] = Variable<DateTime>(nextScheduledAt.value);
+    }
+    if (lastScheduleError.present) {
+      map['last_schedule_error'] = Variable<String>(lastScheduleError.value);
     }
     if (scoreThreshold.present) {
       map['score_threshold'] = Variable<int>(scoreThreshold.value);
@@ -512,6 +679,9 @@ class SavedSearchesCompanion extends UpdateCompanion<SavedSearchRow> {
           ..write('name: $name, ')
           ..write('enabled: $enabled, ')
           ..write('pollIntervalMinutes: $pollIntervalMinutes, ')
+          ..write('scheduleCron: $scheduleCron, ')
+          ..write('nextScheduledAt: $nextScheduledAt, ')
+          ..write('lastScheduleError: $lastScheduleError, ')
           ..write('scoreThreshold: $scoreThreshold, ')
           ..write('queryJson: $queryJson, ')
           ..write('createdAt: $createdAt, ')
@@ -16484,6 +16654,9 @@ typedef $$SavedSearchesTableCreateCompanionBuilder =
       required String name,
       Value<bool> enabled,
       Value<int> pollIntervalMinutes,
+      Value<String?> scheduleCron,
+      Value<DateTime?> nextScheduledAt,
+      Value<String?> lastScheduleError,
       Value<int> scoreThreshold,
       required String queryJson,
       required DateTime createdAt,
@@ -16496,6 +16669,9 @@ typedef $$SavedSearchesTableUpdateCompanionBuilder =
       Value<String> name,
       Value<bool> enabled,
       Value<int> pollIntervalMinutes,
+      Value<String?> scheduleCron,
+      Value<DateTime?> nextScheduledAt,
+      Value<String?> lastScheduleError,
       Value<int> scoreThreshold,
       Value<String> queryJson,
       Value<DateTime> createdAt,
@@ -16607,6 +16783,21 @@ class $$SavedSearchesTableFilterComposer
 
   ColumnFilters<int> get pollIntervalMinutes => $composableBuilder(
     column: $table.pollIntervalMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get scheduleCron => $composableBuilder(
+    column: $table.scheduleCron,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get nextScheduledAt => $composableBuilder(
+    column: $table.nextScheduledAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastScheduleError => $composableBuilder(
+    column: $table.lastScheduleError,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -16735,6 +16926,21 @@ class $$SavedSearchesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get scheduleCron => $composableBuilder(
+    column: $table.scheduleCron,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get nextScheduledAt => $composableBuilder(
+    column: $table.nextScheduledAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastScheduleError => $composableBuilder(
+    column: $table.lastScheduleError,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get scoreThreshold => $composableBuilder(
     column: $table.scoreThreshold,
     builder: (column) => ColumnOrderings(column),
@@ -16776,6 +16982,21 @@ class $$SavedSearchesTableAnnotationComposer
 
   GeneratedColumn<int> get pollIntervalMinutes => $composableBuilder(
     column: $table.pollIntervalMinutes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get scheduleCron => $composableBuilder(
+    column: $table.scheduleCron,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get nextScheduledAt => $composableBuilder(
+    column: $table.nextScheduledAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get lastScheduleError => $composableBuilder(
+    column: $table.lastScheduleError,
     builder: (column) => column,
   );
 
@@ -16908,6 +17129,9 @@ class $$SavedSearchesTableTableManager
                 Value<String> name = const Value.absent(),
                 Value<bool> enabled = const Value.absent(),
                 Value<int> pollIntervalMinutes = const Value.absent(),
+                Value<String?> scheduleCron = const Value.absent(),
+                Value<DateTime?> nextScheduledAt = const Value.absent(),
+                Value<String?> lastScheduleError = const Value.absent(),
                 Value<int> scoreThreshold = const Value.absent(),
                 Value<String> queryJson = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -16918,6 +17142,9 @@ class $$SavedSearchesTableTableManager
                 name: name,
                 enabled: enabled,
                 pollIntervalMinutes: pollIntervalMinutes,
+                scheduleCron: scheduleCron,
+                nextScheduledAt: nextScheduledAt,
+                lastScheduleError: lastScheduleError,
                 scoreThreshold: scoreThreshold,
                 queryJson: queryJson,
                 createdAt: createdAt,
@@ -16930,6 +17157,9 @@ class $$SavedSearchesTableTableManager
                 required String name,
                 Value<bool> enabled = const Value.absent(),
                 Value<int> pollIntervalMinutes = const Value.absent(),
+                Value<String?> scheduleCron = const Value.absent(),
+                Value<DateTime?> nextScheduledAt = const Value.absent(),
+                Value<String?> lastScheduleError = const Value.absent(),
                 Value<int> scoreThreshold = const Value.absent(),
                 required String queryJson,
                 required DateTime createdAt,
@@ -16940,6 +17170,9 @@ class $$SavedSearchesTableTableManager
                 name: name,
                 enabled: enabled,
                 pollIntervalMinutes: pollIntervalMinutes,
+                scheduleCron: scheduleCron,
+                nextScheduledAt: nextScheduledAt,
+                lastScheduleError: lastScheduleError,
                 scoreThreshold: scoreThreshold,
                 queryJson: queryJson,
                 createdAt: createdAt,

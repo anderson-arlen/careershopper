@@ -268,6 +268,141 @@ void main() {
     },
   );
 
+  for (final overrideInput in [false, true]) {
+    test(
+      'partial permission events recover the same tool details and preserve current input ($overrideInput)',
+      () async {
+        Map<String, Object?>? shown;
+        final activity = <Map<String, Object?>>[];
+        final approving = StdioAcpAgentRunner(
+          dataDirectory: directory,
+          permissionPrompt: (params, _) async {
+            shown = params;
+            return 'allow-all';
+          },
+        );
+        await approving.run(
+          AcpRunRequest(
+            executable: 'dart',
+            arguments: [
+              fixture,
+              log.path,
+              'permission',
+              'partial-permission',
+              if (overrideInput) 'override-input',
+            ],
+            workOrderId: 'writer',
+            prompt: 'Draft materials',
+            onSessionUpdate: (params, _) async {
+              activity.add(params);
+            },
+          ),
+        );
+        final tool = shown!['toolCall'] as Map;
+        expect(
+          tool['title'],
+          'mcp.careershopper_session.application_materials_submit',
+        );
+        expect(tool['status'], 'pending');
+        expect(
+          (tool['rawInput'] as Map)['job_id'],
+          overrideInput ? 'updated-job' : 'job-123',
+        );
+        if (overrideInput) {
+          expect(
+            (tool['rawInput'] as Map).containsKey('cover_letter_markdown'),
+            false,
+          );
+        }
+        expect(
+          activity.any(
+            (p) =>
+                (p['update'] as Map)['title'] ==
+                'Always allowed: mcp.careershopper_session.application_materials_submit',
+          ),
+          true,
+        );
+        final response = (await requests()).singleWhere(
+          (r) => r['id'] == 'permission-1',
+        );
+        expect(response['result'], {
+          'outcome': {'outcome': 'selected', 'optionId': 'allow-all'},
+        });
+      },
+    );
+  }
+
+  test(
+    'permission context is never taken from another session with the same tool ID',
+    () async {
+      final approving = StdioAcpAgentRunner(
+        dataDirectory: directory,
+        permissionPrompt: (params, _) async {
+          final tool = params['toolCall'] as Map;
+          expect(tool['title'], isNull);
+          expect(tool['rawInput'], isNull);
+          return 'deny-this';
+        },
+      );
+      await approving.run(
+        AcpRunRequest(
+          executable: 'dart',
+          arguments: [
+            fixture,
+            log.path,
+            'permission',
+            'partial-permission',
+            'foreign-tool-session',
+          ],
+          workOrderId: 'writer',
+          prompt: 'Draft materials',
+        ),
+      );
+    },
+  );
+
+  test(
+    'Always allow survives a fresh adapter and runner for the same MCP tool',
+    () async {
+      var prompts = 0;
+      for (var attempt = 0; attempt < 2; attempt++) {
+        final freshRunner = StdioAcpAgentRunner(
+          dataDirectory: directory,
+          permissionPrompt: (_, _) async {
+            prompts++;
+            return 'allow_always';
+          },
+        );
+        await freshRunner.run(
+          AcpRunRequest(
+            executable: 'dart',
+            arguments: [
+              fixture,
+              log.path,
+              'permission',
+              'remembered-permission',
+              '@agentclientprotocol/codex-acp@1.9.0',
+            ],
+            workOrderId: 'job-$attempt',
+            prompt: 'Save different draft $attempt',
+          ),
+        );
+      }
+      expect(prompts, 1);
+      final replies = (await requests())
+          .where((r) => r['id'] == 'permission-1')
+          .toList();
+      expect((replies[0]['result'] as Map)['outcome'], {
+        'outcome': 'selected',
+        'optionId': 'allow_always',
+      });
+      expect((replies[1]['result'] as Map)['outcome'], {
+        'outcome': 'selected',
+        'optionId': 'allow-this',
+      });
+    },
+  );
+
   test('headless ACP never auto-approves a matching title', () async {
     await expectLater(
       runner.run(

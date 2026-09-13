@@ -86,7 +86,7 @@ available. MCP provides `application_status_set` and `application_outcome_set`.
 
 The output folder is shared by all jobs at `~/Documents/CareerShopper` (under the user profile on Windows). **Everything in that folder is removed on each export.** Other files in Documents and exports in the former data-directory output folder are left untouched. Do not use the new output folder to store files you want to keep. Saved Markdown drafts are separate and are not deleted. Opening an approved, not-yet-applied job with no drafts or previous generation attempt queues its first generation automatically. Failed attempts require an explicit retry.
 
-Every Markdown block carries a `<!-- facts: revision-id -->` source comment linking it to current confirmed, non-private career facts. Keep these comments when editing; they never appear in exported documents. Update your profile and regenerate if facts change. DOCX uses the resume template’s font; PDF embeds DejaVu Sans for portable rendering. Exporting does not submit an application or automatically mark one Applied.
+Every Markdown block carries a `<!-- facts: revision-id -->` source comment linking it to the current saved Resume content revision. Only enabled content may support application claims. Keep these comments when editing; they never appear in exported documents. Update your profile and regenerate if facts change. DOCX uses the resume template’s font; PDF embeds DejaVu Sans for portable rendering. Exporting does not submit an application or automatically mark one Applied.
 
 CareerShopper is a local-first desktop application that continuously finds,
 deduplicates, evaluates, and manages job opportunities. It is intentionally
@@ -105,7 +105,16 @@ ACP harness and surface matches meeting the score threshold in Inbox. Unchanged
 evaluated listings are skipped. Run now works with searches paused and leaves
 polling disabled. Analysis progress and failures appear in Activity.
 
-Scheduled polling and system-tray behavior are planned follow-on work.
+Scheduled searches continue while the Linux window is hidden in the system tray.
+Close the window to hide it; use **Open CareerShopper** in the tray or launch the
+app again to reopen the same instance. **Quit CareerShopper** exits and stops
+scheduling. Agent approval requests reopen a hidden window. A desktop tray host
+is required; without one, closing the window exits normally.
+
+Linux builds require the Ayatana AppIndicator development library
+(`libayatana-appindicator` on Arch, `libayatana-appindicator3-dev` on Debian/Ubuntu).
+`make test-native` checks tray lifecycle behavior with a GTK display; the tests
+can also use GTK's headless Broadway backend on a private D-Bus session.
 
 ## Current desktop workflow
 
@@ -114,9 +123,13 @@ Scheduled polling and system-tray behavior are planned follow-on work.
 2. Ask an MCP-connected AI agent to build your factual career profile,
    preferences, and saved-search strategy—or create searches manually under
    **Searches**.
-3. Review extracted facts under **Profile** and confirm, dispute, edit, or retire
-   them. Add, edit, or remove preferences there as needed. Inspect and edit every
-   search under **Searches**, regardless of how it was created.
+   Each search selects one source and its own schedule: daily at a local time,
+   a repeating interval, or a custom cron expression. Scheduled searches run
+   while CareerShopper is open; missed runs are combined into one on reopening.
+3. Edit and save your history under **Profile → Resume content**. Disabled entries
+   remain available for matching but stay out of applications. Review uncertain
+   imported work before enabling it. Manage preferences in the adjacent tab.
+   Inspect and edit every search under **Searches**.
 4. Open **Documents** to review or edit the reusable resume layout, typography,
    colors, spacing, and section order.
 5. Adjust searches directly or tell the AI when you want to see more or less of

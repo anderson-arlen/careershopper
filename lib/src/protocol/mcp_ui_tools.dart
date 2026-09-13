@@ -16,6 +16,8 @@ import '../storage/database.dart';
 import '../storage/document_template_repository.dart';
 import '../storage/job_repository.dart';
 import '../storage/profile_repository.dart';
+import '../storage/resume_content_repository.dart';
+import '../documents/resume_content.dart';
 import '../storage/employer_logo_repository.dart';
 import '../domain/job_statistics.dart';
 
@@ -64,6 +66,8 @@ class McpUiTools {
         'application_materials_get',
         'document_template_get',
         'writing_style_get',
+        'resume_content_get',
+        'resume_compose',
         'employer_logo_get',
       }.contains(name)) {
         throw StateError(
@@ -83,6 +87,25 @@ class McpUiTools {
         }
       }
     }
+    if (workOrderId != null &&
+        {'resume_content_get', 'resume_compose'}.contains(name)) {
+      final order = await (database.select(
+        database.aiWorkOrders,
+      )..where((r) => r.id.equals(workOrderId))).getSingleOrNull();
+      if (order?.kind == 'application_materials') {
+        final revision = (await ResumeContentRepository(
+          ProfileRepository(database),
+        ).read())?.revisionId;
+        final refs =
+            (jsonDecode(order!.scopeJson) as Map)['citation_refs'] as Map? ??
+            {};
+        if (revision == null || !refs.values.contains(revision)) {
+          throw StateError(
+            'Resume content changed since this work order started. Start a new generation to refresh the short-ID catalog.',
+          );
+        }
+      }
+    }
     final jobs = JobRepository(database);
     final configuration = ConfigurationRepository(database, jobs);
     final profile = ProfileRepository(database);
@@ -90,6 +113,34 @@ class McpUiTools {
     final materials = ApplicationMaterialRepository(database);
     String id(String key) => args[key]! as String;
     switch (name) {
+      case 'resume_content_get':
+        final order = workOrderId == null
+            ? null
+            : await (database.select(
+                database.aiWorkOrders,
+              )..where((r) => r.id.equals(workOrderId))).getSingleOrNull();
+        return ResumeContentRepository(
+          profile,
+        ).get(forApplications: order?.kind == 'application_materials');
+      case 'resume_content_import_skills':
+        return {
+          'imported': await ResumeContentRepository(
+            profile,
+          ).importLegacySkills(actor: 'user'),
+        };
+      case 'resume_content_save':
+        await ResumeContentRepository(profile).save(
+          (args['content'] as Map).cast<String, dynamic>(),
+          expectedRevision: args['expected_revision_id'] as String?,
+          actor: 'user',
+        );
+        return ResumeContentRepository(profile).get();
+      case 'resume_compose':
+        return {
+          'resume_markdown': await ResumeContentRepository(
+            profile,
+          ).compose((args['resume_plan'] as Map).cast<String, dynamic>()),
+        };
       case 'job_notes_get':
         return {
           'job_id': id('job_id'),
@@ -329,17 +380,6 @@ class McpUiTools {
           ),
         );
         return call('document_template_get', {});
-      case 'profile_fact_retire':
-        final fact = await (database.select(
-          database.careerFacts,
-        )..where((row) => row.id.equals(id('fact_id')))).getSingle();
-        if (fact.currentRevisionId != id('expected_revision_id')) {
-          throw StateError(
-            'The fact changed; read it again before retiring it.',
-          );
-        }
-        await profile.retireCareerFact(fact.id, actor: 'mcp_user');
-        return {'fact_id': fact.id, 'retired': true};
       case 'profile_preference_save':
         final prefId = await profile.saveCareerPreference(
           CareerPreferenceDraft(
@@ -504,6 +544,32 @@ Map<String, Object?> _tool(
 };
 
 final uiToolDefinitions = <Map<String, Object?>>[
+  _tool(
+    'resume_content_get',
+    'Read saved resume content. generation_content exposes enabled entries, achievements and details with simple F1, F2, etc. IDs for selection and support_ids. Application work orders receive only that generation catalog; unscoped reads also include editable content and its revision. Never copy UUIDs into generation plans.',
+    {},
+    [],
+    read: true,
+  ),
+  _tool(
+    'resume_content_import_skills',
+    'Explicitly import confirmed disclosable archived skills into Resume content, preserving saved proficiency, context and limitations. Skips existing IDs/names; never overwrites edits or imports private/pending evidence. Creates one saved revision. Requires user confirmation; unavailable in work orders.',
+    {},
+    [],
+  ),
+  _tool(
+    'resume_content_save',
+    'Optional personal_context entries use {id, enabled, topic, text} for user-confirmed interests, domain connections and credentials. They can support matching and generated prose but are not printed as fixed resume sections. Skills use {id, enabled, name, proficiency, notes} as supporting evidence for matching and generated prose; they are not printed verbatim. Save exact fixed resume wording explicitly provided or approved by the user. Never rewrite this content while generating documents. Supply the current expected_revision_id when editing; omit only for first creation. Saving confirms this as career evidence. Employment entries use titles: [{title, dates, achievements: [{id, text}]}] for one or more exact titles, date ranges and their own achievements. AI selection of a job includes every title, with at least one selected achievement per title. Achievements accept priority (integer 0 to 100) required (boolean, must appear whenever the job appears), and requires (IDs of prerequisite achievements within the same job). Prerequisites and their dependencies must be selected whenever a dependent bullet is selected. Projects retain description as their always-included summary and accept details: [{id, text, requires?}] for optional exact sentences. Detail requires IDs must refer to other sentences in the same project; selecting a sentence requires its prerequisites and their dependencies. Entry/title/detail order is resume order; enabled project summaries, patents and education are always included. Uses the same validation and fact revisions as Profile > Resume content.',
+    {'content': resumeContentSchema, 'expected_revision_id': _string},
+    ['content'],
+  ),
+  _tool(
+    'resume_compose',
+    'Assemble a resume from structured tailored text and selected_ids using short IDs from generation_content. CareerShopper adds citations, fixed wording, required bullets, prerequisite closure and highest-priority evidence for uncovered titles. Read-only, no AI invocation. Scoped generation binds the catalog to its work-order revision; unknown or disabled IDs are rejected.',
+    {'resume_plan': resumePlanSchema},
+    ['resume_plan'],
+    read: true,
+  ),
   _tool(
     'job_notes_get',
     'Read local notes for a job. Notes are user annotations, not confirmed career facts.',
@@ -731,12 +797,6 @@ final uiToolDefinitions = <Map<String, Object?>>[
       },
     },
     ['target'],
-  ),
-  _tool(
-    'profile_fact_retire',
-    'Retire a fact on explicit user instruction, preserving revision history. Read profile first and supply its current revision ID.',
-    {'fact_id': _string, 'expected_revision_id': _string},
-    ['fact_id', 'expected_revision_id'],
   ),
   _tool(
     'profile_preference_save',

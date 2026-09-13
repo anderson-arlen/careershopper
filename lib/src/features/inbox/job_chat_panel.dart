@@ -110,6 +110,25 @@ class _JobChatPanelState extends State<JobChatPanel> {
     }
   }
 
+  Future<void> _regenerate() async {
+    if (_sending) return;
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
+    try {
+      final result = await widget.harnesses.queueApplication(
+        widget.job.id,
+        fromScratch: true,
+      );
+      if (mounted) setState(() => _selectedId = result.workOrderId);
+    } on Object catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
   Future<void> _interrupt(AiConversation conversation) async {
     if (_sending) return;
     setState(() {
@@ -237,6 +256,9 @@ class _JobChatPanelState extends State<JobChatPanel> {
                       status: current.status,
                       busy: _sending,
                       onInterrupt: () => _interrupt(current),
+                      onRegenerate: current.kind == 'application_materials'
+                          ? _regenerate
+                          : null,
                       onRetry: current.kind == 'application_materials'
                           ? () => _retry(current)
                           : null,

@@ -15,12 +15,12 @@
 
 ## Career facts and generated documents
 
-- Stable career facts and revisions are the source of truth, not a resume file.
+- Saved Resume content is the sole active career-history source. Its stable revisions support claims; generic legacy facts remain archived, not current AI evidence.
 - Facts directly stated by the user may be confirmed. Facts inferred from files,
   pages, or model output remain pending until user confirmation.
 - Every applicant-specific claim in generated materials must reference confirmed
   career-fact revisions.
-- AI produces restricted Markdown; CareerShopper owns document rendering.
+- For document generation, AI supplies structured prose and short saved-content IDs. CareerShopper assembles restricted Markdown, citations, and document rendering.
 
 ## Simplicity
 

@@ -17,33 +17,35 @@ void main() {
 
   tearDown(() => database.close());
 
-  test('project descriptions belong below name and stack headings', () {
-    expect(defaultDocumentGenerationPrompt, isNot(contains('\u2014')));
-    expect(
-      defaultDocumentGenerationPrompt,
-      contains('### **Project Name** · Technology, Technology'),
-    );
-    expect(
-      defaultDocumentGenerationPrompt,
-      contains('only the project name and relevant confirmed technology stack'),
-    );
-    expect(
-      defaultDocumentGenerationPrompt,
-      contains(
-        'Do not put a product description, purpose, audience, or platform/product-type label in the heading',
-      ),
-    );
-    expect(
-      defaultDocumentGenerationPrompt,
-      contains('In the summary paragraph below, describe what the product is'),
-    );
-    expect(
-      defaultDocumentGenerationPrompt,
-      isNot(contains('name, actual product/platform type')),
-    );
-  });
+  test(
+    'generation instructions delegate assembly and use short IDs for prose support',
+    () {
+      expect(
+        defaultDocumentGenerationPrompt,
+        contains('structured resume_plan and cover_letter_plan'),
+      );
+      expect(
+        defaultDocumentGenerationPrompt,
+        contains('same short IDs from generation_content'),
+      );
+      expect(
+        defaultDocumentGenerationPrompt,
+        contains('write only the body paragraphs'),
+      );
+      expect(
+        defaultDocumentGenerationPrompt,
+        isNot(contains('### **Project Name**')),
+      );
+      expect(defaultDocumentGenerationPrompt, isNot(contains('<!-- facts:')));
+    },
+  );
 
   for (final previous in [
+    (
+      'company-aware structured plans',
+      previousStructuredDocumentGenerationPrompt,
+    ),
+    ('structured document plans', previousMarkdownDocumentGenerationPrompt),
     (
       'regular-weight project stacks',
       previousBoldProjectStackDocumentGenerationPrompt,
@@ -94,20 +96,6 @@ void main() {
         );
         expect(saved.settings.bodyFontSize, 11.0);
       }
-      expect(
-        defaultDocumentGenerationPrompt,
-        contains(
-          '[Class <code> - <spelled-out category>] <exact title> (<Month YYYY>)',
-        ),
-      );
-      expect(
-        defaultDocumentGenerationPrompt,
-        contains('Omit applicant/co-inventor names'),
-      );
-      expect(
-        defaultDocumentGenerationPrompt,
-        contains("each patent's own confirmed classification and grant date"),
-      );
       expect(defaultDocumentGenerationPrompt.length, lessThanOrEqualTo(20000));
     });
   }
@@ -139,20 +127,6 @@ void main() {
         );
         expect(saved.settings.bodyFontSize, 11.0);
       }
-      expect(
-        defaultDocumentGenerationPrompt,
-        contains('"Software Engineer IV" becomes "Software Engineer"'),
-      );
-      expect(
-        defaultDocumentGenerationPrompt,
-        contains('Read the posting\'s responsibilities'),
-      );
-      expect(
-        defaultDocumentGenerationPrompt,
-        contains(
-          'Keep official employer/role titles unchanged in work history',
-        ),
-      );
       expect(defaultDocumentGenerationPrompt.length, lessThanOrEqualTo(20000));
     },
   );
@@ -184,10 +158,6 @@ void main() {
         );
         expect(saved.settings.bodyFontSize, 11.0);
       }
-      expect(
-        defaultDocumentGenerationPrompt,
-        contains('separately supplied shared writing style'),
-      );
       expect(defaultDocumentGenerationPrompt.length, lessThanOrEqualTo(20000));
     },
   );
@@ -237,13 +207,6 @@ void main() {
     await repository.ensureDefaults();
     final saved = (await repository.watchDefaultResumeTemplate().first)!;
     expect(saved.settings.generationPrompt, defaultDocumentGenerationPrompt);
-    expect(defaultDocumentGenerationPrompt, contains('350–450 words'));
-    expect(defaultDocumentGenerationPrompt, contains('not a second resume'));
-    expect(defaultDocumentGenerationPrompt, contains('recipient block'));
-    expect(
-      defaultDocumentGenerationPrompt,
-      contains('name in separate paragraphs'),
-    );
     expect(defaultDocumentGenerationPrompt.length, lessThanOrEqualTo(20000));
   });
 
@@ -275,32 +238,6 @@ void main() {
         expect(saved.settings.marginTop, 0.75);
         expect(saved.name, 'My layout');
       }
-      expect(
-        defaultDocumentGenerationPrompt,
-        contains('RELEVANT WORK HISTORY'),
-      );
-      expect(
-        defaultDocumentGenerationPrompt,
-        contains('one coherent accomplishment'),
-      );
-      expect(
-        defaultDocumentGenerationPrompt,
-        contains(
-          'only the project name and relevant confirmed technology stack',
-        ),
-      );
-      expect(
-        defaultDocumentGenerationPrompt,
-        contains('itemize each distinct confirmed patent'),
-      );
-      expect(
-        defaultDocumentGenerationPrompt,
-        contains('Do not add routine page breaks'),
-      );
-      expect(
-        defaultDocumentGenerationPrompt,
-        isNot(contains('use a standalone <!-- pagebreak --> before')),
-      );
     },
   );
 
@@ -357,7 +294,7 @@ void main() {
     expect(upgraded.settings.generationPrompt, defaultDocumentGenerationPrompt);
     expect(
       upgraded.settings.generationPrompt,
-      contains('confirmed start date, most recently started first'),
+      contains('saved order are handled by the assembler'),
     );
     expect(upgraded.name, 'My layout');
     expect(upgraded.settings.bodyFontSize, 10.5);

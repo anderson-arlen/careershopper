@@ -1,3 +1,4 @@
+import 'package:careershopper/src/documents/resume_content.dart';
 import 'package:careershopper/src/storage/database.dart';
 import 'dart:io';
 import 'package:careershopper/src/features/ai/chat_transcript.dart';
@@ -79,6 +80,8 @@ void main() {
               .onDestinationSelected!(1);
           await tester.pumpAndSettle();
         }
+        expect(find.text('Job ID: one'), findsOneWidget);
+        expect(find.byTooltip('Copy job ID'), findsOneWidget);
         final search = find.byKey(const ValueKey('job-list-search'));
         expect(
           tester.getBottomLeft(search).dy,
@@ -89,6 +92,7 @@ void main() {
           ('postgre', 'Data Engineer'),
           ('CORAL', 'Designer'),
           ('%_', 'Backend Engineer'),
+          ('two', 'Data Engineer'),
         ]) {
           await tester.enterText(search, term);
           await tester.pumpAndSettle();
@@ -194,7 +198,12 @@ void main() {
       expect(tester.widget<Text>(count).data, '4');
       expect(find.text('Job new'), findsNothing);
       expect(find.text('Job one'), findsNWidgets(2));
-      await tester.tap(find.byIcon(Icons.work_outline));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(NavigationRail),
+          matching: find.byIcon(Icons.work_outline),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(find.text('All jobs'), findsNWidgets(2));
       jobs.update([]);
@@ -204,6 +213,36 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+
+  for (final jobChat in [false, true]) {
+    testWidgets(
+      'generate from scratch starts and opens a new document conversation ($jobChat)',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1280, 900));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final harnesses = _RetryChatHarness('interrupted');
+        addTearDown(harnesses.changes.close);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: jobChat
+                  ? JobChatPanel(job: _OneJobStore.job, harnesses: harnesses)
+                  : AiActivityPage(harnesses: harnesses),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Resume generation'), findsOneWidget);
+        await tester.tap(find.text('Generate from scratch'));
+        await tester.pumpAndSettle();
+        expect(harnesses.freshJobs, [_OneJobStore.job.id]);
+        expect(harnesses.retried, isEmpty);
+        expect(find.text('Documents generated.'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
 
   for (final jobChat in [false, true]) {
     for (final status in ['failed', 'interrupted']) {
@@ -225,14 +264,14 @@ void main() {
           );
           await tester.pumpAndSettle();
           await tester.enterText(find.byType(TextField), 'Keep my draft');
-          await tester.tap(find.text('Retry'));
+          await tester.tap(find.text('Resume generation'));
           await tester.pump();
           expect(harnesses.retried, ['failed-materials']);
-          expect(find.text('Resuming saved work…'), findsOneWidget);
+          expect(find.text('Starting document generation…'), findsOneWidget);
           expect(
             tester
                 .widget<OutlinedButton>(
-                  find.widgetWithText(OutlinedButton, 'Retry'),
+                  find.widgetWithText(OutlinedButton, 'Resume generation'),
                 )
                 .onPressed,
             isNull,
@@ -1127,33 +1166,6 @@ void main() {
     },
   );
   testWidgets(
-    'Confirm fact records confirmation immediately without a dialog',
-    (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1280, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      final profile = _ConfirmingProfileStore();
-      await tester.pumpWidget(
-        CareerShopperApp(
-          jobs: _EmptyJobStore(),
-          configuration: _EmptyConfigurationStore(),
-          profile: profile,
-          templates: _EmptyDocumentTemplateStore(),
-          harnesses: _EmptyAiHarnessStore(),
-        ),
-      );
-      await tester.tap(find.byIcon(Icons.badge_outlined));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Confirm fact'));
-      await tester.pumpAndSettle();
-      expect(profile.confirmation, [
-        'employment-1',
-        'confirmed',
-        'desktop_user',
-      ]);
-      expect(find.byType(AlertDialog), findsNothing);
-    },
-  );
-  testWidgets(
     'job document tabs show editable Markdown and retain edits across tabs',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1280, 1100));
@@ -1214,7 +1226,7 @@ void main() {
       expect(
         tester
             .widget<OutlinedButton>(
-              find.widgetWithText(OutlinedButton, 'Regenerate'),
+              find.widgetWithText(OutlinedButton, 'Generate from scratch'),
             )
             .onPressed,
         isNull,
@@ -1451,7 +1463,7 @@ void main() {
       expect(harnesses.savedResume, startsWith('# Edited name'));
       expect(harnesses.savedResume, '# Edited name <!-- facts: identity -->');
       expect(find.byType(AlertDialog), findsNothing);
-      await tester.tap(find.text('Regenerate'));
+      await tester.tap(find.text('Generate from scratch'));
       await tester.pumpAndSettle();
       expect(harnesses.generated, isTrue);
     },
@@ -1556,6 +1568,10 @@ void main() {
       await tester.tap(find.text('Resume generation'));
       await tester.pumpAndSettle();
       expect(harnesses.generated, isTrue);
+      expect(harnesses.freshRequested, isFalse);
+      await tester.tap(find.text('Generate from scratch'));
+      await tester.pumpAndSettle();
+      expect(harnesses.freshRequested, isTrue);
     },
   );
   testWidgets('agent settings refresh dependent controls and save on Done', (
@@ -1609,6 +1625,32 @@ void main() {
     expect(find.text('Add listing'), findsOneWidget);
   });
 
+  testWidgets(
+    'job list replaces company placeholder and source tag with source icon',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        CareerShopperApp(
+          jobs: _OneJobStore(),
+          configuration: _EmptyConfigurationStore(),
+          profile: _EmptyProfileStore(),
+          templates: _EmptyDocumentTemplateStore(),
+          harnesses: _EmptyAiHarnessStore(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('LinkedIn'), findsNothing);
+      expect(find.byTooltip('Source: LinkedIn'), findsOneWidget);
+      expect(
+        find.image(const AssetImage('assets/sources/linkedin.png')),
+        findsOneWidget,
+      );
+      expect(find.text('EX'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('exposes source and saved-search setup', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1280, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -1636,9 +1678,11 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.badge_outlined));
     await tester.pumpAndSettle();
-    expect(find.text('Career facts'), findsOneWidget);
-    expect(find.text('No career facts yet'), findsOneWidget);
-    expect(find.text('Add fact'), findsOneWidget);
+    expect(find.text('Career facts'), findsNothing);
+    expect(find.text('Add fact'), findsNothing);
+    expect(find.text('Resume content'), findsOneWidget);
+    await tester.tap(find.text('Preferences'));
+    await tester.pumpAndSettle();
     expect(find.text('Add preference'), findsOneWidget);
   });
 
@@ -1974,41 +2018,95 @@ void main() {
     ]);
     expect(configuration.savedDraft?.scoreThreshold, 70);
     expect(configuration.savedDraft?.pollIntervalMinutes, 360);
+    expect(configuration.savedDraft?.scheduleCron, '0 9 * * *');
+    expect(configuration.savedDraft?.sourceConfigIds, {'test-source'});
   });
 
-  testWidgets('allows a career fact to be created manually', (tester) async {
+  testWidgets('editing a saved search preserves its interval schedule', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(1280, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    final profile = _RecordingProfileStore();
+    final configuration = _RecordingConfigurationStore(
+      existing: const SavedSearchDefinition(
+        id: 'search',
+        name: 'Interval search',
+        enabled: true,
+        pollIntervalMinutes: 720,
+        scoreThreshold: 70,
+        query: SavedSearchQuery(name: 'Interval search'),
+        sourceConfigIds: {'test-source'},
+      ),
+    );
     await tester.pumpWidget(
       CareerShopperApp(
         jobs: _EmptyJobStore(),
-        configuration: _EmptyConfigurationStore(),
-        profile: profile,
+        configuration: configuration,
+        profile: _EmptyProfileStore(),
         templates: _EmptyDocumentTemplateStore(),
         harnesses: _EmptyAiHarnessStore(),
       ),
     );
-
-    await tester.tap(find.byIcon(Icons.badge_outlined));
+    await tester.tap(find.byIcon(Icons.manage_search).first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Add fact'));
+    await tester.tap(find.byTooltip('Edit search'));
     await tester.pumpAndSettle();
-    await tester.enterText(
-      find.widgetWithText(TextFormField, 'Fact type'),
-      'skill',
+    expect(
+      find.widgetWithText(TextFormField, 'Interval (minutes)'),
+      findsOneWidget,
     );
-    await tester.enterText(
-      find.widgetWithText(TextFormField, 'Structured value (JSON)'),
-      '{"name":"Dart","years":5}',
-    );
-    await tester.tap(find.text('Save fact'));
+    expect(find.widgetWithText(TextFormField, 'Time (HH:mm)'), findsNothing);
+    await tester.tap(find.text('Save search'));
     await tester.pumpAndSettle();
-
-    expect(profile.savedFact?.kind, 'skill');
-    expect(profile.savedFact?.value, {'name': 'Dart', 'years': 5});
-    expect(profile.savedFact?.visibility, 'resume');
+    expect(configuration.savedDraft?.scheduleCron, isNull);
+    expect(configuration.savedDraft?.pollIntervalMinutes, 720);
+    expect(configuration.savedDraft?.sourceConfigIds, {'test-source'});
   });
+
+  testWidgets(
+    'saved search supports custom cron and validates it before saving',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final configuration = _RecordingConfigurationStore();
+      await tester.pumpWidget(
+        CareerShopperApp(
+          jobs: _EmptyJobStore(),
+          configuration: configuration,
+          profile: _EmptyProfileStore(),
+          templates: _EmptyDocumentTemplateStore(),
+          harnesses: _EmptyAiHarnessStore(),
+        ),
+      );
+      await tester.tap(find.byIcon(Icons.manage_search).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add search').first);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Search name'),
+        'Weekday search',
+      );
+      final schedule = find.widgetWithText(
+        DropdownButtonFormField<String>,
+        'Schedule',
+      );
+      await tester.ensureVisible(schedule);
+      await tester.tap(schedule);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Custom cron').last);
+      await tester.pumpAndSettle();
+      final cron = find.widgetWithText(TextFormField, 'Cron expression');
+      await tester.enterText(cron, 'not cron');
+      await tester.tap(find.text('Save search'));
+      await tester.pumpAndSettle();
+      expect(configuration.savedDraft, isNull);
+      await tester.enterText(cron, '0 9,17 * * 1-5');
+      await tester.tap(find.text('Save search'));
+      await tester.pumpAndSettle();
+      expect(configuration.savedDraft?.scheduleCron, '0 9,17 * * 1-5');
+      expect(configuration.savedDraft?.sourceConfigIds, {'test-source'});
+    },
+  );
 
   testWidgets('configures Codex from the ACP Registry', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1280, 900));
@@ -2038,42 +2136,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(harnesses.savedRegistryAgent?.id, 'codex-acp');
-  });
-
-  testWidgets('filters career facts by type and status together', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1280, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      CareerShopperApp(
-        jobs: _EmptyJobStore(),
-        configuration: _EmptyConfigurationStore(),
-        profile: _FilteringProfileStore(),
-        templates: _EmptyDocumentTemplateStore(),
-        harnesses: _EmptyAiHarnessStore(),
-      ),
-    );
-
-    await tester.tap(find.byIcon(Icons.badge_outlined));
-    await tester.pumpAndSettle();
-    expect(find.text('Employment'), findsOneWidget);
-    expect(find.text('Skill'), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('fact-type-filter')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Skill').last);
-    await tester.pumpAndSettle();
-    expect(find.text('Employment'), findsNothing);
-
-    await tester.tap(find.widgetWithText(FilterChip, 'Pending'));
-    await tester.pumpAndSettle();
-    expect(find.text('No facts match this filter'), findsOneWidget);
-
-    await tester.tap(find.text('Clear filters'));
-    await tester.pumpAndSettle();
-    expect(find.text('Employment'), findsOneWidget);
-    expect(find.text('Skill'), findsOneWidget);
   });
 
   testWidgets('shows and edits the resume template', (tester) async {
@@ -2146,8 +2208,10 @@ class _EmptyAiHarnessStore implements AiHarnessStore {
   @override
   Future<int> dispatchSearchAnalysis(List<String> jobIds) async => 0;
   @override
-  Future<AiDispatchResult> queueApplication(String jobId) =>
-      dispatchManualImport(jobId);
+  Future<AiDispatchResult> queueApplication(
+    String jobId, {
+    bool fromScratch = false,
+  }) => dispatchManualImport(jobId);
   @override
   Stream<ApplicationMaterials?> watchMaterials(String jobId) =>
       Stream.value(null);
@@ -2234,6 +2298,7 @@ class _DraftHarness extends _EmptyAiHarnessStore {
   Stream<String?> watchMaterialStatus(String jobId) => Stream.value(status);
   String? savedResume;
   bool generated = false;
+  bool freshRequested = false;
   @override
   Stream<ApplicationMaterials?> watchMaterials(String jobId) => Stream.value(
     ApplicationMaterials(
@@ -2256,9 +2321,13 @@ class _DraftHarness extends _EmptyAiHarnessStore {
   }
 
   @override
-  Future<AiDispatchResult> queueApplication(String jobId) {
+  Future<AiDispatchResult> queueApplication(
+    String jobId, {
+    bool fromScratch = false,
+  }) {
     generated = true;
-    return super.queueApplication(jobId);
+    freshRequested = fromScratch;
+    return super.queueApplication(jobId, fromScratch: fromScratch);
   }
 }
 
@@ -2457,58 +2526,24 @@ class _EmptyProfileStore implements ProfileStore {
       Stream.value(const []);
 }
 
-class _RecordingProfileStore extends _EmptyProfileStore {
-  CareerFactDraft? savedFact;
-
-  @override
-  Future<String> saveCareerFact(
-    CareerFactDraft draft, {
-    required String actor,
-  }) async {
-    savedFact = draft;
-    return 'fact';
-  }
-}
-
-class _ConfirmingProfileStore extends _FilteringProfileStore {
-  List<String>? confirmation;
-  @override
-  Future<void> setFactVerificationStatus(
-    String factId,
-    String status, {
-    required String actor,
-  }) async {
-    confirmation = [factId, status, actor];
-  }
-}
-
-class _FilteringProfileStore extends _EmptyProfileStore {
+class _IdentityProfileStore extends _EmptyProfileStore {
   @override
   Stream<List<CareerProfileFact>> watchCareerFacts() => Stream.value([
     CareerProfileFact(
-      id: 'employment-1',
-      revisionId: 'employment-revision-1',
-      kind: 'employment',
-      value: const {'employer': 'Example'},
-      verificationStatus: 'pending',
-      visibility: 'resume',
-      createdAt: DateTime.utc(2026, 9, 4),
-    ),
-    CareerProfileFact(
-      id: 'skill-1',
-      revisionId: 'skill-revision-1',
-      kind: 'skill',
-      value: const {'name': 'Dart'},
+      id: 'resume',
+      revisionId: 'resume-revision',
+      kind: 'resume_content',
+      value: {
+        ...ResumeContent.empty(),
+        'header': {
+          'name': 'Alice Example',
+          'contact': 'Boulder, Colorado · alice@example.test',
+        },
+      },
       verificationStatus: 'confirmed',
       visibility: 'resume',
       createdAt: DateTime.utc(2026, 9, 4),
     ),
-  ]);
-}
-
-class _IdentityProfileStore extends _EmptyProfileStore {
-  @override
-  Stream<List<CareerProfileFact>> watchCareerFacts() => Stream.value([
     CareerProfileFact(
       id: 'identity-name',
       revisionId: 'identity-name-revision',
@@ -2796,7 +2831,26 @@ class _PartialSearchConfigurationStore extends _PausedSearchConfigurationStore {
 }
 
 class _RecordingConfigurationStore extends _EmptyConfigurationStore {
+  _RecordingConfigurationStore({this.existing});
+  final SavedSearchDefinition? existing;
   SavedSearchDraft? savedDraft;
+
+  @override
+  Stream<List<SavedSearchDefinition>> watchSavedSearches() =>
+      Stream.value([?existing]);
+
+  @override
+  Stream<List<SourceConfiguration>> watchSourceConfigurations() =>
+      Stream.value([
+        const SourceConfiguration(
+          id: 'test-source',
+          sourceFamily: 'linkedin',
+          adapterId: 'linkedin_guest_search_v1',
+          enabled: true,
+          values: {},
+          healthState: 'not_checked',
+        ),
+      ]);
 
   @override
   Future<String> saveSavedSearch(SavedSearchDraft draft) async {
@@ -3083,6 +3137,7 @@ class _OneJobStore extends _EmptyJobStore {
 
   static final job = InboxJob(
     id: 'job-1',
+    sourceFamily: 'linkedin',
     employerId: 'employer-1',
     title: 'Backend Engineer',
     employerName: 'Example',
@@ -3169,7 +3224,10 @@ class _InboxQueueHarness extends _EmptyAiHarnessStore {
   final _InboxQueueStore jobs;
   final approved = <String>[];
   @override
-  Future<AiDispatchResult> queueApplication(String jobId) async {
+  Future<AiDispatchResult> queueApplication(
+    String jobId, {
+    bool fromScratch = false,
+  }) async {
     approved.add(jobId);
     jobs.update(jobs.current.where((job) => job.id != jobId).toList());
     return const AiDispatchResult(
@@ -3250,6 +3308,7 @@ class _RetryChatHarness extends _ContextHarnessStore {
     current = [
       AiConversation(
         id: 'failed-materials',
+        jobId: _OneJobStore.job.id,
         title: 'Draft application',
         kind: 'application_materials',
         status: status,
@@ -3257,6 +3316,32 @@ class _RetryChatHarness extends _ContextHarnessStore {
       ),
     ];
   }
+  final freshJobs = <String>[];
+  @override
+  Future<AiDispatchResult> queueApplication(
+    String jobId, {
+    bool fromScratch = false,
+  }) async {
+    if (fromScratch) freshJobs.add(jobId);
+    current = [
+      AiConversation(
+        id: 'fresh-generation',
+        title: 'Fresh application',
+        kind: 'application_materials',
+        jobId: jobId,
+        status: 'completed',
+        updatedAt: DateTime.now(),
+      ),
+      ...current,
+    ];
+    changes.add(current);
+    return const AiDispatchResult(
+      workOrderId: 'fresh-generation',
+      profileName: 'Writer',
+      launched: true,
+    );
+  }
+
   final retried = <String>[];
   final resuming = Completer<void>();
   @override

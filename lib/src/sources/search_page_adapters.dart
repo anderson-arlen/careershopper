@@ -281,8 +281,17 @@ class LinkedInSearchAdapter implements JobSourceAdapter {
   );
 
   @override
-  Future<SourceConfigCheck> validateConfig(SourceConfig config) async =>
-      const SourceConfigCheck(valid: true);
+  Future<SourceConfigCheck> validateConfig(SourceConfig config) async {
+    final pages = config.values.containsKey('max_pages')
+        ? config.values['max_pages']
+        : 1;
+    return SourceConfigCheck(
+      valid: pages is int && pages >= 1 && pages <= 100,
+      messages: pages is int && pages >= 1 && pages <= 100
+          ? const []
+          : const ['max_pages must be an integer from 1 through 100.'],
+    );
+  }
 
   @override
   QueryPlan compileQuery(SavedSearchQuery search, SourceConfig config) {
@@ -291,6 +300,7 @@ class LinkedInSearchAdapter implements JobSourceAdapter {
         'keywords': _searchTerms(search),
         'location': search.locations.firstOrNull,
         'remote_only': _remoteOnly(search),
+        'max_pages': config.values['max_pages'] ?? 1,
       },
       residualQuery: search,
     );
@@ -304,19 +314,46 @@ class LinkedInSearchAdapter implements JobSourceAdapter {
       if ((plan.remoteParameters['location'] as String?)?.isNotEmpty == true)
         'location': plan.remoteParameters['location']! as String,
       if (plan.remoteParameters['remote_only'] == true) 'f_WT': '2',
-      'start': '0',
+      'f_TPR': 'r86400', // LinkedIn's past-24-hours posting filter.
     };
-    final uri = Uri.https(
-      'www.linkedin.com',
-      '/jobs-guest/jobs/api/seeMoreJobPostings/search',
-      parameters,
-    );
-    final markup = await fetchText(_client, uri);
-    final records = _parseLinkedIn(markup);
-    yield RawSourcePage(
-      records: records,
-      warning: _emptyPageWarning(markup, records),
-    );
+    final maxPages = plan.remoteParameters['max_pages'] ?? 1;
+    if (maxPages is! int || maxPages < 1 || maxPages > 100) {
+      throw const FormatException(
+        'max_pages must be an integer from 1 through 100.',
+      );
+    }
+    var start = 0;
+    final seen = <String>{};
+    for (var page = 0; page < maxPages; page++) {
+      if (page > 0) await Future<void>.delayed(const Duration(seconds: 3));
+      final uri = Uri.https(
+        'www.linkedin.com',
+        '/jobs-guest/jobs/api/seeMoreJobPostings/search',
+        {...parameters, 'start': '$start'},
+      );
+      final markup = await fetchText(_client, uri);
+      final document = html.parse(markup);
+      final cardCount = document
+          .querySelectorAll('div.base-search-card')
+          .length;
+      final records = _parseLinkedIn(document)
+          .where((record) => seen.add(record['provider_job_id']! as String))
+          .toList();
+      final repeated = cardCount > 0 && records.isEmpty;
+      final warning = repeated
+          ? 'LinkedIn returned no new usable listings; pagination stopped.'
+          : page > 0 && markup.trim().isEmpty
+          ? null
+          : _emptyPageWarning(markup, records);
+      yield RawSourcePage(
+        records: records,
+        hasMoreResults: cardCount == 0 && warning == null ? false : null,
+        warning: warning,
+      );
+      if (cardCount == 0 || repeated) break;
+      // Count all returned cards, including duplicates or malformed listings.
+      start += cardCount;
+    }
   }
 
   @override
@@ -369,8 +406,7 @@ String? _emptyPageWarning(String markup, List<Map<String, Object?>> records) {
       'The response may require JavaScript or use changed markup. Zero matches cannot be confirmed.';
 }
 
-List<Map<String, Object?>> _parseLinkedIn(String markup) {
-  final document = html.parse(markup);
+List<Map<String, Object?>> _parseLinkedIn(Document document) {
   final records = <Map<String, Object?>>[];
   final seen = <String>{};
   for (final card in document.querySelectorAll('div.base-search-card')) {

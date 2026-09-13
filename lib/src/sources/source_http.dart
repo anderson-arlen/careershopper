@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:html/parser.dart' as html;
 
 sealed class SourceRequestException implements Exception {
   const SourceRequestException(this.message);
@@ -82,9 +83,19 @@ Future<String> fetchText(
       retryAfter: _retryAfter(response.headers['retry-after']),
     );
   }
-  final lowerBody = body.toLowerCase();
   final isJson =
       body.trimLeft().startsWith('{') || body.trimLeft().startsWith('[');
+  // Public listings can load CAPTCHA libraries without presenting a challenge.
+  // Inspect page text, not script code or data attributes.
+  final document = isJson ? null : html.parse(body);
+  for (final element
+      in document?.querySelectorAll(
+            'script, style, template, noscript, [hidden], [aria-hidden="true"]',
+          ) ??
+          <Never>[]) {
+    element.remove();
+  }
+  final lowerBody = document?.documentElement?.text.toLowerCase() ?? '';
   if (!isJson &&
       (lowerBody.contains('captcha') ||
           lowerBody.contains('verify you are human') ||
@@ -96,7 +107,7 @@ Future<String> fetchText(
       reason: 'blocked_or_captcha',
     );
   }
-  if (response.statusCode == 401 || response.statusCode == 403) {
+  if ({401, 403, 999}.contains(response.statusCode)) {
     throw SourceUnavailableException(
       'The source denied access with HTTP ${response.statusCode}.',
       reason: 'access_denied',

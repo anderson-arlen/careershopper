@@ -8,6 +8,7 @@ import '../storage/app_data_directory.dart';
 import 'acp_client.dart';
 import 'codex_session_storage.dart';
 import 'acp_permission.dart';
+import 'acp_tool_permissions.dart';
 import 'acp_configuration.dart';
 
 class AcpRunCancelled implements Exception {
@@ -122,6 +123,17 @@ class StdioAcpAgentRunner implements AcpAgentRunner {
           ? null
           : request.existingSessionId,
     );
+    final toolPermissions = codex
+        ? AcpToolPermissions(
+            Directory(p.join(dataDirectory.path, 'agent-permissions')),
+            [
+              request.executable,
+              request.arguments,
+              mcpExecutable.path,
+              workspace.path,
+            ],
+          )
+        : null;
     final permissionCancellation = Completer<void>();
     var replaying = false;
     AcpConfigurationSession? configuration;
@@ -149,40 +161,78 @@ class StdioAcpAgentRunner implements AcpAgentRunner {
         final title = call is Map
             ? call['title']?.toString() ?? 'Tool request'
             : 'Tool request';
-        await request.onSessionUpdate?.call({
-          'update': {
-            'sessionUpdate': 'permission_request',
-            'title': 'Approval required: $title',
-          },
-        }, false);
-        final result = await requestAcpPermission(
-          params,
-          prompt: permissionPrompt == null
-              ? null
-              : (params, cancelled) => permissionPrompt!({
-                  ...params,
-                  'conversationTitle':
-                      request.permissionContext ??
-                      'AI work ${request.workOrderId}',
-                }, cancelled),
-          cancelled: Future.any([
-            permissionCancellation.future,
-            if (request.control != null) request.control!.whenCancelled,
-          ]),
-        );
+        var remembered = false;
+        Future<String?> showPermission(
+          Map<String, Object?> offered,
+          Future<void> cancelled,
+        ) async {
+          await request.onSessionUpdate?.call({
+            'update': {
+              'sessionUpdate': 'permission_request',
+              'title': 'Approval required: $title',
+              'toolCall': call,
+              'options': offered['options'],
+              'workingDirectory': workspace.path,
+            },
+          }, false);
+          return permissionPrompt!({
+            ...offered,
+            'workingDirectory': workspace.path,
+            'conversationTitle':
+                request.permissionContext ?? 'AI work ${request.workOrderId}',
+          }, cancelled);
+        }
+
+        final cancelled = Future.any([
+          permissionCancellation.future,
+          if (request.control != null) request.control!.whenCancelled,
+        ]);
+        final result = toolPermissions == null
+            ? await requestAcpPermission(
+                params,
+                prompt: permissionPrompt == null ? null : showPermission,
+                cancelled: cancelled,
+              )
+            : await toolPermissions.resolve(
+                params,
+                prompt: permissionPrompt == null ? null : showPermission,
+                cancelled: cancelled,
+                onRemembered: () {
+                  remembered = true;
+                },
+              );
         final outcome = result['outcome'] as Map;
         final selected = outcome['optionId'];
         final options = params['options'];
         final allowed =
             options is List &&
             options.whereType<Map>().any(
-              (o) => o['optionId'] == selected && o['kind'] == 'allow_once',
+              (o) =>
+                  o['optionId'] == selected &&
+                  {'allow_once', 'allow_always'}.contains(o['kind']),
             );
+        final selectedOption = options is List
+            ? options
+                  .whereType<Map>()
+                  .where((o) => o['optionId'] == selected)
+                  .firstOrNull
+            : null;
+        final selectedKind = selectedOption?['kind'];
         await request.onSessionUpdate?.call({
           'update': {
             'sessionUpdate': 'permission_decision',
+            'toolCall': call,
+            'optionId': selected,
+            'optionKind': selectedKind,
+            'remembered': remembered,
             'title':
-                '${allowed ? 'Allowed once' : 'Denied or cancelled'}: $title',
+                '${allowed ? (remembered
+                          ? 'Allowed by saved permission'
+                          : selected == 'allow_session'
+                          ? 'Allowed for this session'
+                          : selectedKind == 'allow_always'
+                          ? 'Always allowed'
+                          : 'Allowed once') : 'Denied or cancelled'}: $title',
           },
         }, false);
         return result;

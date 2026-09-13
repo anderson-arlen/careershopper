@@ -8,6 +8,7 @@ import '../protocol/acp_runner.dart';
 import '../storage/database.dart';
 import '../storage/ai_agent_purpose.dart';
 import '../storage/profile_repository.dart';
+import '../storage/resume_content_repository.dart';
 import '../storage/writing_style_repository.dart';
 
 /// The only MCP operation allowed to invoke ACP. No conversation/draft is saved.
@@ -79,6 +80,12 @@ class ApplicationAnswerService {
             if (!replaying &&
                 update is Map &&
                 update['sessionUpdate'] == 'agent_message_chunk') {
+              // Codex streams progress and the final answer through the same
+              // ACP event. Only its final-answer phase is the JSON payload.
+              final meta = update['_meta'];
+              final codex = meta is Map ? meta['codex'] : null;
+              final phase = codex is Map ? codex['phase'] : null;
+              if (phase != null && phase != 'final_answer') return;
               final content = update['content'];
               if (content is Map &&
                   content['type'] == 'text' &&
@@ -158,9 +165,9 @@ ${jsonEncode(input)}''',
           'The writer exceeded the requested length limit.',
         );
       }
-      final current = await ProfileRepository(
-        database,
-      ).watchCareerFacts().first;
+      final current = await ResumeContentRepository(
+        ProfileRepository(database),
+      ).evidence();
       final allowed = current
           .where((fact) => fact.canDiscloseInApplications)
           .map((fact) => fact.revisionId)
@@ -171,6 +178,9 @@ ${jsonEncode(input)}''',
           'The answer cites unavailable, private, or no longer confirmed facts.',
         );
       }
+      await ResumeContentRepository(
+        ProfileRepository(database),
+      ).validateApplicationDisclosure(answer);
       return {
         'answer': answer,
         'word_count': words,

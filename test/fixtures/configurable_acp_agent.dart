@@ -113,6 +113,41 @@ Future<void> main(List<String> args) async {
         }
         if (args.contains('permission')) {
           permissionPromptId = request['id'];
+          if (args.contains('partial-permission')) {
+            for (final update in [
+              {
+                'sessionUpdate': 'tool_call',
+                'toolCallId': 'exec-example',
+                'title':
+                    'mcp.careershopper_session.application_materials_submit',
+                'kind': 'execute',
+                'status': 'in_progress',
+                'rawInput': {
+                  'job_id': 'job-123',
+                  'cover_letter_markdown': 'Draft cover letter',
+                },
+              },
+              {
+                'sessionUpdate': 'tool_call_update',
+                'toolCallId': 'exec-example',
+                'status': 'in_progress',
+              },
+            ]) {
+              stdout.writeln(
+                jsonEncode({
+                  'jsonrpc': '2.0',
+                  'method': 'session/update',
+                  'params': {
+                    'sessionId': args.contains('foreign-tool-session')
+                        ? 'other-session'
+                        : 'fixture-session',
+                    'update': update,
+                  },
+                }),
+              );
+            }
+          }
+
           stdout.writeln(
             jsonEncode({
               'jsonrpc': '2.0',
@@ -120,11 +155,32 @@ Future<void> main(List<String> args) async {
               'method': 'session/request_permission',
               'params': {
                 'sessionId': 'fixture-session',
-                'toolCall': {
-                  'title': 'Execute command in careershopper for job-123',
-                  'kind': 'execute',
-                  'rawInput': {'command': 'touch /tmp/example'},
-                },
+                'toolCall': args.contains('remembered-permission')
+                    ? {
+                        'toolCallId': 'mcp-1',
+                        'kind': 'execute',
+                        'title':
+                            'mcp.careershopper_session.application_materials_submit',
+                        '_meta': {'is_mcp_tool_call': true},
+                        'rawInput': {
+                          'server': 'careershopper_session',
+                          'tool': 'application_materials_submit',
+                          'arguments': {'job_id': params['prompt'].toString()},
+                        },
+                      }
+                    : args.contains('partial-permission')
+                    ? {
+                        'toolCallId': 'exec-example',
+                        'kind': 'execute',
+                        'status': 'pending',
+                        if (args.contains('override-input'))
+                          'rawInput': {'job_id': 'updated-job'},
+                      }
+                    : {
+                        'title': 'Execute command in careershopper for job-123',
+                        'kind': 'execute',
+                        'rawInput': {'command': 'touch /tmp/example'},
+                      },
                 'options': [
                   {
                     'optionId': 'allow-this',
@@ -137,7 +193,9 @@ Future<void> main(List<String> args) async {
                     'name': 'Deny',
                   },
                   {
-                    'optionId': 'allow-all',
+                    'optionId': args.contains('remembered-permission')
+                        ? 'allow_always'
+                        : 'allow-all',
                     'kind': 'allow_always',
                     'name': 'Always allow',
                   },

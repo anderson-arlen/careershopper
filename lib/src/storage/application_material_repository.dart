@@ -8,6 +8,7 @@ import '../documents/material_markdown.dart';
 import 'database.dart';
 import 'profile_repository.dart';
 import 'document_template_repository.dart';
+import 'resume_content_repository.dart';
 
 class ApplicationMaterials {
   const ApplicationMaterials({
@@ -93,9 +94,9 @@ class ApplicationMaterialRepository {
       database.careerFacts,
     )..where((row) => row.currentRevisionId.isIn(ids))).get();
     final currentIds = current.map((fact) => fact.currentRevisionId).toSet();
-    final profile = (await ProfileRepository(database).watchCareerFacts().first)
-        .where((fact) => fact.canDiscloseInApplications)
-        .toList();
+    final profile = await ResumeContentRepository(
+      ProfileRepository(database),
+    ).evidence();
     final disclosableIds = profile.map((fact) => fact.revisionId).toSet();
     final invalid = <String, String>{};
     for (final id in ids) {
@@ -110,7 +111,7 @@ class ApplicationMaterialRepository {
         invalid[id] = 'fact has changed; use its current confirmed revision';
       } else if (!disclosableIds.contains(id)) {
         invalid[id] =
-            'confidential career fact is not available for application disclosure';
+            'archived or confidential evidence is not available; cite the current saved resume content';
       }
     }
     for (final document in documents.entries) {
@@ -123,93 +124,21 @@ class ApplicationMaterialRepository {
       }
     }
     if (errors.isNotEmpty) throw StateError(errors.join('\n'));
-    _validateEmployerAttribution(documents, profile);
+    await ResumeContentRepository(
+      ProfileRepository(database),
+    ).validateApplicationDisclosure(
+      documents.values
+          .expand((blocks) => blocks)
+          .map((b) => b.plainText)
+          .join('\n'),
+    );
   }
 
-  void _validateEmployerAttribution(
-    Map<String, List<MaterialBlock>> documents,
-    List<CareerProfileFact> profile,
-  ) {
-    final byId = {for (final fact in profile) fact.id: fact};
-    final byRevision = {for (final fact in profile) fact.revisionId: fact};
-    final employers = <String, List<String>>{};
-    for (final fact in profile.where((fact) => fact.kind == 'employment')) {
-      final value = fact.value;
-      if (value is! Map || value['employer'] is! String) continue;
-      employers[fact.id] = [
-        value['employer'] as String,
-        if (value['employer_aliases'] is List)
-          ...(value['employer_aliases'] as List).whereType<String>(),
-      ].where((name) => name.trim().isNotEmpty).toList();
-    }
-    Set<String> employmentScope(CareerProfileFact fact, Set<String> visited) {
-      if (!visited.add(fact.id)) return {};
-      if (employers.containsKey(fact.id)) return {fact.id};
-      // A shared skill used at multiple employers does not transfer an
-      // achievement to every employer where that skill was used.
-      if (!{'achievement', 'project', 'career_context'}.contains(fact.kind)) {
-        return {};
-      }
-      final value = fact.value;
-      if (value is! Map || value['context_fact_ids'] is! List) return {};
-      final parents = (value['context_fact_ids'] as List)
-          .whereType<String>()
-          .map((id) => byId[id])
-          .whereType<CareerProfileFact>()
-          .toList();
-      final direct = parents
-          .where((parent) => employers.containsKey(parent.id))
-          .map((parent) => parent.id)
-          .toSet();
-      if (direct.isNotEmpty) return direct;
-      return {
-        for (final parent in parents) ...employmentScope(parent, visited),
-      };
-    }
-
-    Set<String> namedEmployers(String text) => {
-      for (final entry in employers.entries)
-        if (entry.value.any(
-          (name) => RegExp(
-            r'(^|[^a-zA-Z0-9])' + RegExp.escape(name) + r'(?=$|[^a-zA-Z0-9])',
-            caseSensitive: false,
-          ).hasMatch(text),
-        ))
-          entry.key,
-    };
-    final errors = <String>[];
-    for (final document in documents.entries) {
-      var headingEmployers = <String>{};
-      for (final (index, block) in document.value.indexed) {
-        final named = namedEmployers(block.plainText);
-        if (block.level > 0) {
-          headingEmployers = block.level == 3 ? named : <String>{};
-        }
-        final anchors = {...headingEmployers, ...named};
-        if (anchors.isEmpty) continue;
-        for (final revision in block.factIds) {
-          final fact = byRevision[revision];
-          if (fact == null) continue;
-          for (final employer in employmentScope(fact, {})) {
-            if (anchors.contains(employer)) continue;
-            errors.add(
-              '${document.key}, block ${index + 1}: employer attribution mismatch. '
-              'This block is under or names ${anchors.map((id) => employers[id]!.first).join(', ')}, '
-              'but cited fact ${fact.id} belongs to ${employers[employer]!.first}. '
-              'Explicitly identify that employer in the block or move the claim to its correct employer section. '
-              'Preserve the actual supporting fact; do not swap citations to justify an incorrect claim.',
-            );
-          }
-        }
-      }
-    }
-    if (errors.isNotEmpty) throw StateError(errors.join('\n'));
-  }
-
-  /// A sanity floor for AI submissions, not a judgment of writing quality.
-  /// User edits remain unrestricted beyond Markdown and factual references.
   Future<void> validateGenerated(String resume, String coverLetter) async {
     await validate(resume, coverLetter);
+    await ResumeContentRepository(
+      ProfileRepository(database),
+    ).validateGenerated(resume);
     for (final (kind, markdown) in [
       ('resume', resume),
       ('cover letter', coverLetter),

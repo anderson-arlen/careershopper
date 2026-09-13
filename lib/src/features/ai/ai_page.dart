@@ -168,6 +168,7 @@ class _AiActivityPageState extends State<AiActivityPage> {
                       harnesses: widget.harnesses,
                       conversation: current,
                       onError: _showError,
+                      onNewGeneration: (id) => setState(() => _selectedId = id),
                     ),
             ),
           ],
@@ -253,12 +254,14 @@ class _ConversationView extends StatefulWidget {
     required this.harnesses,
     required this.conversation,
     required this.onError,
+    required this.onNewGeneration,
     super.key,
   });
 
   final AiHarnessStore harnesses;
   final AiConversation conversation;
   final ValueChanged<Object> onError;
+  final ValueChanged<String> onNewGeneration;
 
   @override
   State<_ConversationView> createState() => _ConversationViewState();
@@ -310,6 +313,23 @@ class _ConversationViewState extends State<_ConversationView> {
     }
   }
 
+  Future<void> _regenerate() async {
+    final jobId = widget.conversation.jobId;
+    if (_sending || jobId == null) return;
+    setState(() => _sending = true);
+    try {
+      final result = await widget.harnesses.queueApplication(
+        jobId,
+        fromScratch: true,
+      );
+      if (mounted) widget.onNewGeneration(result.workOrderId);
+    } on Object catch (error) {
+      widget.onError(error);
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
   Future<void> _interrupt() async {
     if (_sending) return;
     setState(() => _sending = true);
@@ -348,6 +368,11 @@ class _ConversationViewState extends State<_ConversationView> {
           status: widget.conversation.status,
           busy: _sending,
           onInterrupt: _interrupt,
+          onRegenerate:
+              widget.conversation.kind == 'application_materials' &&
+                  widget.conversation.jobId != null
+              ? _regenerate
+              : null,
           onRetry: widget.conversation.kind == 'application_materials'
               ? _retry
               : null,

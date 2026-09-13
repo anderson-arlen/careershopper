@@ -6,10 +6,12 @@
 #endif
 
 #include "flutter/generated_plugin_registrant.h"
+#include "desktop_tray.h"
 
 struct _MyApplication {
   GtkApplication parent_instance;
   char** dart_entrypoint_arguments;
+  FlMethodChannel* window_channel;
 };
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
@@ -19,9 +21,25 @@ static void first_frame_cb(MyApplication* self, FlView* view) {
   gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
 }
 
+static void window_method_call(FlMethodChannel*, FlMethodCall* call,
+                               gpointer data) {
+  GtkWindow* window = GTK_WINDOW(data);
+  if (g_strcmp0(fl_method_call_get_name(call), "show") == 0) {
+    if (!gtk_widget_get_visible(GTK_WIDGET(window))) gtk_window_present(window);
+    fl_method_call_respond_success(call, nullptr, nullptr);
+  } else {
+    fl_method_call_respond_not_implemented(call, nullptr);
+  }
+}
+
 // Implements GApplication::activate.
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
+  GList* windows = gtk_application_get_windows(GTK_APPLICATION(application));
+  if (windows != nullptr) {
+    gtk_window_present(GTK_WINDOW(windows->data));
+    return;
+  }
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 
@@ -54,6 +72,11 @@ static void my_application_activate(GApplication* application) {
 
   gtk_window_set_default_size(window, 1280, 720);
 
+  g_autofree gchar* executable = g_file_read_link("/proc/self/exe", nullptr);
+  g_autofree gchar* bundle = g_path_get_dirname(executable);
+  g_autofree gchar* icon = g_build_filename(bundle, "data", "careershopper.svg", nullptr);
+  desktop_tray_attach(window, icon);
+
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(
       project, self->dart_entrypoint_arguments);
@@ -74,6 +97,13 @@ static void my_application_activate(GApplication* application) {
   gtk_widget_realize(GTK_WIDGET(view));
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
+
+  g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();
+  self->window_channel = fl_method_channel_new(
+      fl_engine_get_binary_messenger(fl_view_get_engine(view)),
+      "careershopper/window", FL_METHOD_CODEC(codec));
+  fl_method_channel_set_method_call_handler(self->window_channel,
+                                            window_method_call, window, nullptr);
 
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }
@@ -110,9 +140,10 @@ static void my_application_startup(GApplication* application) {
 
 // Implements GApplication::shutdown.
 static void my_application_shutdown(GApplication* application) {
-  // MyApplication* self = MY_APPLICATION(object);
-
-  // Perform any actions required at application shutdown.
+  MyApplication* self = MY_APPLICATION(application);
+  g_clear_object(&self->window_channel);
+  GList* windows = gtk_application_get_windows(GTK_APPLICATION(application));
+  if (windows != nullptr) gtk_widget_destroy(GTK_WIDGET(windows->data));
 
   G_APPLICATION_CLASS(my_application_parent_class)->shutdown(application);
 }
@@ -144,5 +175,5 @@ MyApplication* my_application_new() {
 
   return MY_APPLICATION(g_object_new(my_application_get_type(),
                                      "application-id", APPLICATION_ID, "flags",
-                                     G_APPLICATION_NON_UNIQUE, nullptr));
+                                     static_cast<GApplicationFlags>(0), nullptr));
 }

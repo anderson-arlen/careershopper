@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:careershopper/src/protocol/mcp_server.dart';
+import 'package:careershopper/src/protocol/mcp_ui_tools.dart';
+import '../storage/resume_content_test.dart' as fixture;
 import 'package:careershopper/src/documents/document_prompt.dart';
 import 'package:careershopper/src/storage/application_material_repository.dart';
 import 'package:careershopper/src/storage/database.dart';
@@ -16,6 +18,347 @@ void main() {
   late CareerShopperDatabase db;
   setUp(() => db = CareerShopperDatabase(NativeDatabase.memory()));
   tearDown(() => db.close());
+
+  test(
+    'matching sees disabled entries while both scoped profile reads exclude them',
+    () async {
+      final tools = McpUiTools(db);
+      final source = await tools.call('resume_content_save', {
+        'confirmed': true,
+        'content': fixture.fixedContent(),
+      });
+      final now = DateTime.now();
+      await db
+          .into(db.aiWorkOrders)
+          .insert(
+            AiWorkOrdersCompanion.insert(
+              id: 'writer',
+              kind: 'application_materials',
+              status: 'running',
+              scopeJson: jsonEncode({
+                'citation_refs': {'F1': source['revision_id']},
+              }),
+              promptVersion: 'test',
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      expect(
+        jsonEncode(data(await call(db, 'profile_get', {}))),
+        contains('Omitted Project'),
+      );
+      expect(
+        jsonEncode(data(await call(db, 'profile_get', {}, scope: 'writer'))),
+        isNot(contains('Omitted Project')),
+      );
+      expect(
+        jsonEncode(
+          data(await call(db, 'resume_content_get', {}, scope: 'writer')),
+        ),
+        isNot(contains('Omitted Project')),
+      );
+      expect(
+        jsonEncode(data(await call(db, 'resume_content_get', {}))),
+        contains('Omitted Project'),
+      );
+      final definitions =
+          (await exchange(db, 'tools/list', {}))['result'] as Map;
+      final names = (definitions['tools'] as List).map((t) => t['name']);
+      expect(names, isNot(contains('profile_facts_upsert_batch')));
+      expect(names, isNot(contains('profile_fact_verification_set')));
+      expect(names, isNot(contains('profile_fact_retire')));
+    },
+  );
+
+  test(
+    'fixed resume tools expose layout, require approval, compose and reject stale writes',
+    () async {
+      final tools = McpUiTools(db);
+      final definitions =
+          ((await exchange(db, 'tools/list', {}))['result'] as Map)['tools']
+              as List;
+      for (final name in [
+        'resume_content_get',
+        'resume_content_save',
+        'resume_compose',
+      ]) {
+        expect(definitions.any((d) => d['name'] == name), true);
+      }
+      expect((await tools.call('resume_content_get', {}))['configured'], false);
+      await expectLater(
+        tools.call('resume_content_save', {'content': fixture.fixedContent()}),
+        throwsFormatException,
+      );
+      await expectLater(
+        tools.call('resume_content_save', {
+          'content': fixture.fixedContent(),
+          'confirmed': true,
+        }, workOrderId: 'writer'),
+        throwsStateError,
+      );
+      final saved = await tools.call('resume_content_save', {
+        'content': fixture.fixedContent(),
+        'confirmed': true,
+      });
+      final revision = saved['revision_id'] as String;
+      final composed = await tools.call('resume_compose', {
+        'resume_plan': fixture.structuredPlan(),
+      }, workOrderId: 'writer');
+      expect(
+        composed['resume_markdown'],
+        contains('Implemented a search feature.'),
+      );
+      expect(
+        composed['resume_markdown'],
+        contains('Updated a reporting tool.'),
+      );
+      await expectLater(
+        tools.call('resume_content_save', {
+          'content': fixture.fixedContent(),
+          'confirmed': true,
+        }),
+        throwsStateError,
+      );
+      final withHistory = saved['content'] as Map;
+      ((withHistory['experience'] as List).first['titles'] as List).add({
+        'title': 'Developer',
+        'dates': '2015 to 2019',
+        'achievements': [
+          ((withHistory['experience'] as List)
+                      .first['titles'][0]['achievements']
+                  as List)
+              .removeLast(),
+        ],
+      });
+      final updated = await tools.call('resume_content_save', {
+        'content': withHistory,
+        'expected_revision_id': revision,
+        'confirmed': true,
+      });
+      expect(updated['revision_id'], isNot(revision));
+      final readBack = await tools.call('resume_content_get', {});
+      expect(
+        (((readBack['content'] as Map)['experience'] as List).first['titles']
+            as List),
+        hasLength(2),
+      );
+      final missingTitleEvidence = fixture.structuredPlan()
+        ..['selected_ids'] = ['F2'];
+      final filled = await tools.call('resume_compose', {
+        'resume_plan': missingTitleEvidence,
+      });
+      expect(
+        filled['resume_markdown'],
+        contains('Added automated checks.'),
+      );
+      final historyResume = await tools.call('resume_compose', {
+        'resume_plan': fixture.structuredPlan(),
+      });
+      expect(
+        historyResume['resume_markdown'],
+        contains('**Developer** · 2015 to 2019'),
+      );
+      await expectLater(
+        tools.call('resume_compose', {
+          'resume_plan': fixture.structuredPlan()..['selected_ids'] = ['F999'],
+        }),
+        throwsFormatException,
+      );
+      expect(
+        await call(db, 'profile_facts_upsert_batch', {
+          'provenance': 'user_statement',
+          'source_label': 'writer',
+          'facts': [
+            {
+              'kind': 'resume_content',
+              'value': fixture.fixedContent(),
+              'verification_status': 'confirmed',
+            },
+          ],
+        }),
+        contains('error'),
+      );
+    },
+  );
+
+  test(
+    'MCP saves priorities and project sentences and enforces their selection contract',
+    () async {
+      final tools = McpUiTools(db);
+      final content =
+          jsonDecode(jsonEncode(fixture.fixedContent()))
+              as Map<String, dynamic>;
+      final achievement =
+          (content['experience'] as List).first['achievements'][0] as Map;
+      achievement['priority'] = 80;
+      achievement['required'] = true;
+      (content['projects'] as List).first['details'] = [
+        {'id': 'detail', 'text': 'Built an API in Go.'},
+      ];
+      await tools.call('resume_content_save', {
+        'content': content,
+        'confirmed': true,
+      });
+      final fetched =
+          (await tools.call('resume_content_get', {}))['content'] as Map;
+      expect(
+        fetched['experience'][0]['titles'][0]['achievements'][0]['priority'],
+        80,
+      );
+      expect(
+        fetched['experience'][0]['titles'][0]['achievements'][0]['required'],
+        true,
+      );
+      expect(
+        fetched['projects'][0]['details'][0]['text'],
+        'Built an API in Go.',
+      );
+      final selected = {
+        ...fixture.structuredPlan(),
+        'selected_ids': ['F3', 'F7'],
+      };
+      final result = await tools.call('resume_compose', {
+        'resume_plan': selected,
+      });
+      expect(
+        result['resume_markdown'],
+        contains(
+          'Built a public product with a local database. Built an API in Go.',
+        ),
+      );
+      final required = await tools.call('resume_compose', {
+        'resume_plan': selected,
+      });
+      expect(
+        required['resume_markdown'],
+        contains('Implemented a search feature.'),
+      );
+      final definitions =
+          ((await exchange(db, 'tools/list', {}))['result'] as Map)['tools']
+              as List;
+      final saveSchema = definitions.singleWhere(
+        (d) => d['name'] == 'resume_content_save',
+      )['inputSchema']['properties']['content']['properties'];
+      final achievementSchema =
+          saveSchema['experience']['items']['properties']['titles']['items']['properties']['achievements']['items']['properties'];
+      expect(achievementSchema['priority']['type'], 'integer');
+      expect(achievementSchema['required']['type'], 'boolean');
+      expect(
+        saveSchema['projects']['items']['properties']['details']['type'],
+        'array',
+      );
+      final composeSchema = definitions.singleWhere(
+        (d) => d['name'] == 'resume_compose',
+      )['inputSchema']['properties']['resume_plan'];
+      expect(composeSchema['properties']['selected_ids']['type'], 'array');
+    },
+  );
+
+  test(
+    'MCP saves project dependency links and enforces them on composition',
+    () async {
+      final tools = McpUiTools(db);
+      final content =
+          jsonDecode(jsonEncode(fixture.fixedContent()))
+              as Map<String, dynamic>;
+      content['projects'][0]['details'] = [
+        {'id': 'base', 'text': 'Built an API.'},
+        {
+          'id': 'rollout',
+          'text': 'Rolled it out.',
+          'requires': ['base'],
+        },
+      ];
+      final saved = await tools.call('resume_content_save', {
+        'content': content,
+        'confirmed': true,
+      });
+      final fetched =
+          (await tools.call('resume_content_get', {}))['content'] as Map;
+      expect(fetched['projects'][0]['details'][1]['requires'], ['base']);
+      final selected = {
+        ...fixture.structuredPlan(),
+        'selected_ids': ['F2', 'F8'],
+      };
+      final closure = await tools.call('resume_compose', {
+        'resume_plan': selected,
+      });
+      expect(
+        closure['resume_markdown'],
+        contains('Built an API. Rolled it out.'),
+      );
+      final result = await tools.call('resume_compose', {
+        'resume_plan': selected,
+      });
+      expect(
+        result['resume_markdown'],
+        contains('Built an API. Rolled it out.'),
+      );
+      fetched['projects'][0]['details'][1]['requires'] = ['ci'];
+      await expectLater(
+        tools.call('resume_content_save', {
+          'content': fetched,
+          'expected_revision_id': saved['revision_id'],
+          'confirmed': true,
+        }),
+        throwsFormatException,
+      );
+      final definitions =
+          ((await exchange(db, 'tools/list', {}))['result'] as Map)['tools']
+              as List;
+      final schema = definitions.singleWhere(
+        (d) => d['name'] == 'resume_content_save',
+      )['inputSchema']['properties']['content']['properties']['projects']['items']['properties']['details']['items'];
+      expect(schema['properties']['requires']['type'], 'array');
+      expect(schema['properties']['requires']['uniqueItems'], true);
+      expect(schema['required'], isNot(contains('requires')));
+    },
+  );
+
+  test('MCP exposes and persists directional achievement dependencies', () async {
+    final tools = McpUiTools(db);
+    final content =
+        jsonDecode(jsonEncode(fixture.fixedContent())) as Map<String, dynamic>;
+    content['experience'][0]['achievements'][1]['requires'] = ['search-achievement'];
+    final saved = await tools.call('resume_content_save', {
+      'content': content,
+      'confirmed': true,
+    });
+    final fetched =
+        (await tools.call('resume_content_get', {}))['content'] as Map;
+    expect(
+      fetched['experience'][0]['titles'][0]['achievements'][1]['requires'],
+      ['search-achievement'],
+    );
+    final selected = fixture.structuredPlan();
+    await tools.call('resume_compose', {'resume_plan': selected});
+    selected['selected_ids'] = ['F3'];
+    final closed = await tools.call('resume_compose', {
+      'resume_plan': selected,
+    });
+    expect(closed['resume_markdown'], contains('Implemented a search feature.'));
+    selected['selected_ids'] = ['F2'];
+    await tools.call('resume_compose', {'resume_plan': selected});
+    fetched['experience'][0]['titles'][0]['achievements'][1]['requires'] = [
+      'report-achievement',
+    ];
+    await expectLater(
+      tools.call('resume_content_save', {
+        'content': fetched,
+        'expected_revision_id': saved['revision_id'],
+        'confirmed': true,
+      }),
+      throwsFormatException,
+    );
+    final definitions =
+        ((await exchange(db, 'tools/list', {}))['result'] as Map)['tools']
+            as List;
+    final schema = definitions.singleWhere(
+      (d) => d['name'] == 'resume_content_save',
+    )['inputSchema']['properties']['content']['properties']['experience']['items']['properties']['titles']['items']['properties']['achievements']['items']['properties'];
+    expect(schema['requires']['type'], 'array');
+    expect(schema['requires']['uniqueItems'], true);
+  });
 
   test(
     'availability actions and expired outcomes are discoverable and guarded',
@@ -366,20 +709,11 @@ void main() {
       );
       final jobId = imported['job_id'] as String;
       expect(imported['logo_warning'], isNotNull);
-      final facts = data(
-        await call(db, 'profile_facts_upsert_batch', {
-          'provenance': 'user_statement',
-          'source_label': 'User statement',
-          'facts': [
-            {
-              'kind': 'identity',
-              'value': {'name': 'Alex'},
-              'verification_status': 'confirmed',
-            },
-          ],
-        }),
-      );
-      final revision = ((facts['facts'] as List).single as Map)['revision_id'];
+      final savedContent = await McpUiTools(db).call('resume_content_save', {
+        'confirmed': true,
+        'content': fixture.fixedContent(),
+      });
+      final revision = savedContent['revision_id'];
       final markdown = '# Alex <!-- facts: $revision -->';
       expect(
         await call(db, 'job_review_set', {

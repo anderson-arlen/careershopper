@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../shared/window_activity.dart';
 
 import '../../domain/job.dart';
+import '../../domain/job_statistics.dart';
 import '../../platform/external_url_launcher.dart';
 import '../../storage/job_repository.dart';
 import '../../storage/ai_harness_repository.dart';
@@ -353,7 +355,7 @@ class _JobList extends StatelessWidget {
                 children: [
                   Column(
                     children: [
-                      _EmployerLogo(job: job),
+                      _SourceIcon(sourceFamily: job.sourceFamily),
                       const SizedBox(height: 8),
                       _ScoreBadge(score: job.overallScore),
                     ],
@@ -438,50 +440,41 @@ class _JobList extends StatelessWidget {
   }
 }
 
-class _EmployerLogo extends StatelessWidget {
-  const _EmployerLogo({required this.job});
-  final InboxJob job;
+class _SourceIcon extends StatelessWidget {
+  const _SourceIcon({required this.sourceFamily});
+  final String sourceFamily;
   @override
   Widget build(BuildContext context) {
-    final words = job.employerName
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((word) => word.isNotEmpty)
-        .take(2);
-    final initials = words
-        .map((word) => word.characters.first)
-        .join()
-        .toUpperCase();
-    Widget fallback() => Center(
-      child: Text(
-        initials.isEmpty ? '?' : initials,
-        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-          color: Theme.of(context).colorScheme.onSecondaryContainer,
-        ),
-      ),
-    );
-    return Semantics(
-      label: '${job.employerName} logo',
-      image: true,
+    final asset = switch (sourceFamily) {
+      'indeed' => 'assets/sources/indeed.png',
+      'linkedin' => 'assets/sources/linkedin.png',
+      _ => null,
+    };
+    final label = 'Source: ${JobStatistics.sourceLabel(sourceFamily)}';
+    return Tooltip(
+      message: label,
       child: Container(
         width: 44,
         height: 44,
         decoration: BoxDecoration(
-          color: job.employerLogoPng == null
+          color: asset == null
               ? Theme.of(context).colorScheme.secondaryContainer
               : Colors.white,
           borderRadius: BorderRadius.circular(8),
         ),
         clipBehavior: Clip.antiAlias,
-        child: job.employerLogoPng == null
-            ? fallback()
+        child: asset == null
+            ? Icon(
+                Icons.work_outline,
+                semanticLabel: label,
+                color: Theme.of(context).colorScheme.onSecondaryContainer,
+              )
             : Padding(
-                padding: const EdgeInsets.all(3),
-                child: Image.memory(
-                  job.employerLogoPng!,
+                padding: const EdgeInsets.all(6),
+                child: Image.asset(
+                  asset,
                   fit: BoxFit.contain,
-                  cacheWidth: 128,
-                  errorBuilder: (_, error, stackTrace) => fallback(),
+                  semanticLabel: label,
                 ),
               ),
       ),
@@ -822,6 +815,32 @@ class _JobDetailState extends State<_JobDetail> {
                               job.location,
                             ].where((value) => value.isNotEmpty).join(' · '),
                             style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 4,
+                            children: [
+                              Text(
+                                'Job ID: ${job.id}',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                              IconButton(
+                                tooltip: 'Copy job ID',
+                                icon: const Icon(Icons.copy, size: 18),
+                                onPressed: () async {
+                                  await Clipboard.setData(
+                                    ClipboardData(text: job.id),
+                                  );
+                                  if (!context.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Job ID copied'),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
                           ),
                         ],
                       ),

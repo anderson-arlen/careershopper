@@ -15,7 +15,8 @@ and MCP. Agents do the work themselves; MCP must not launch another agent.
 | Blocked employers list and Unblock | `blocked_employers_list`, `employer_block_set(blocked: false, confirmed: true)`; shared repository reads and writes |
 | Open listing | `job_open_listing` |
 | Company logo | Import `employer_logo_url`; `employer_logo_get`, `employer_logo_set` |
-| Profile facts: CRUD/visibility/verification | `profile_get`, `profile_facts_upsert_batch`, `profile_fact_verification_set`, `profile_fact_retire` (retains history) |
+| Resume-shaped fixed content editor: header, headings, roles/achievements, projects, patents, education | `resume_content_get`, `resume_content_save` with explicit `confirmed: true` and `expected_revision_id`; shared `ResumeContentRepository` |
+| Unified profile and matching context | `profile_get` reads saved resume content and preferences; all disabled entries remain matching context. Application scopes receive enabled content only. |
 | Preferences: read/edit/rename/delete | `profile_get.preference_entries`, `profile_preference_save`, `profile_preference_delete`; batch upsert retained |
 | Searches: list/edit/pause/delete/run | `saved_searches_list`, `saved_search_upsert`, `saved_search_enabled_set`, `saved_search_delete`, `saved_search_run` |
 | Search result explanations and persistent run history | `saved_search_runs_list`; `saved_search_run.sources` includes the same diagnostics |
@@ -39,6 +40,42 @@ using literal substring matches so partial typing works. Repeated occurrences
 within a field and repeated query words do not inflate scores. Jobs matching any
 word appear, highest total first, with the view's existing ordering for ties.
 These text scores do not modify saved AI evaluations or eligibility.
+
+Each saved search selects exactly one source. Desktop edits and
+`saved_search_upsert` share repository validation; `source_config_ids` contains
+exactly one ID (omitting it on edit preserves the source). Schema v17 splits
+existing searches with multiple sources, retains their query, threshold and
+interval, moves each source's run history to its search, and preserves historical
+job matches. Searches without a source are retained but paused.
+
+Scheduling offers daily local time, an interval, or a numeric five-field cron
+expression. MCP uses `schedule_cron` (`0 9 * * *` for daily at 09:00), or null
+with `poll_interval_minutes` for intervals. Cron accepts wildcards, comma lists,
+ranges and steps; Sunday is 0 or 7, and restricted day-of-month and weekday
+fields use cron's OR rule. Spring daylight-saving gaps are skipped; repeated
+local times run once. `saved_searches_list` returns the schedule,
+`schedule_timezone: "local"`, `next_scheduled_at` in UTC, and
+`last_schedule_error`, matching the search cards.
+
+The desktop scheduler checks every 30 seconds while the app is running. Missed
+occurrences are combined into one run, then the next deadline is calculated
+from the current time. Pausing clears the deadline; resuming schedules a future
+run. Existing interval searches receive a future deadline on first startup.
+Manual runs do not reset the schedule. Provider intervals, backoff and blocks
+remain enforced. Scheduled discovery uses the same repository as Run now and
+queues eligible jobs through the desktop's configured job-matching AI; missing
+AI setup is recorded without contacting a provider. MCP configures and inspects
+these searches but does not expose an ACP-launch operation.
+
+On Linux, closing the window hides it in the system tray when a tray host is
+connected. The window and Flutter engine remain alive, so schedules and ongoing
+work continue. Tray actions open/hide the window or quit the application; launching
+CareerShopper again reopens the existing instance. Quit stops the process and its
+scheduler. Without a tray host, closing exits normally; losing the host restores
+a hidden window. Agent permission prompts also restore the window before asking
+for a decision. These are presentation/lifecycle controls, not new data actions:
+MCP continues to expose schedules, run history, and AI activity through the
+existing read tools, without adding window-control or general ACP-launch tools.
 The job-list search updates on every edit. Clear search restores the view;
 no matches leaves the search box available. Inbox filtering uses the currently
 displayed snapshot so typing does not refresh or reorder incoming listings.
@@ -72,15 +109,56 @@ false, preserving existing behavior. `ai_profiles_list` exposes both flags and
 saved settings read-only. Configuration and duplication remain desktop-only
 under the ACP control exception; no MCP launch or settings mutations are added.
 
+Inbox and Jobs list rows show the original source icon in place of the company
+logo: bundled LinkedIn and Indeed icons, or a generic job icon for other sources.
+The tooltip and accessible label identify the source. `jobs_search`,
+`job_get`, and job resources return the same `source_family`, selected from the
+earliest observation with insertion order breaking ties, matching statistics.
+Later AI imports do not replace the original source icon. Existing observation
+history supplies this field; no database migration is required.
+
+LinkedIn source editing includes **Maximum pages per search** (1–100, default 1).
+`source_config_upsert.max_pages` saves the same setting through shared source
+validation; `source_configs_list` returns its effective value. Omission on edit
+preserves the setting. Values live in the existing source configuration JSON,
+so older configurations retain one-page behavior without a schema migration.
+Pagination counts raw returned cards for offsets, deduplicates across pages,
+and stops early on exhaustion, repeated results, or errors/blocks. Three seconds
+separate page requests. Reaching the configured limit does not assert that no
+more matches exist.
+
 Searches can be run manually while paused through Run search now or
 `saved_search_run`. A manual run leaves the search's enabled setting unchanged
 and still respects source enablement, provider backoff, and blocks. The desktop
-requires a configured default ACP harness and dispatches one scoped analysis batch
-for eligible matches. `saved_search_run` returns `candidate_job_ids` selected by
+requires a configured default ACP harness and dispatches an isolated single-job
+evaluation for each eligible match, processed sequentially. `saved_search_run` returns `candidate_job_ids` selected by
 the same repository rule; the calling MCP agent evaluates those jobs itself with
 `job_get`, `profile_get`, and `job_evaluation_submit`. MCP does not launch ACP.
+Both paths evaluate complete saved search descriptions directly, including Indeed
+API descriptions, without browsing or reimporting the posting. Retrieval is only
+needed for empty content, excerpts, visible truncation, or access/error placeholders.
+Short or vague postings do not require retrieval just because details are absent.
+When retrieval is needed for Indeed, the desktop prompt uses the saved Indeed
+source URL rather than the external application URL, which remains saved for applying.
+Desktop import/refresh and incomplete-search workflows use `job_posting_fetch`
+first, also available to MCP callers. The shared listing service retrieves the
+saved source URL with Dart HTTP and a Chrome-style User-Agent, strips script and
+navigation content, and returns untrusted page text for `job_import_submit`.
+The fetch itself does not change the saved description, evaluation, review, or
+application state. It records retrieval diagnostics and provider blocks locally.
+The tool requires `confirmed: true`, enforces job scope, and permits scoped
+retrieval only for import/search work orders. Complete search descriptions still
+skip retrieval. Explicit access denial, authentication, CAPTCHA, or rate limits
+stop requests to that host until the user clears the saved block. Block checks
+are shared with listing availability checks; a generic retrieval failure does
+not itself establish a block. No JavaScript execution or browser cookies are used.
+Explicit Refresh & reanalyze and document-generation availability checks still fetch
+the listing. Search evaluation does not fetch logos as a prerequisite to scoring.
 Desktop import/search prompts and the MCP evaluation contract share the same
-scoring instructions: fit and attainability assess stated requirements against
+scoring instructions: fit and attainability are integers from 0 through 100;
+confidence is a number from 0 through 1 inclusive (78% is submitted as `0.78`).
+Both the prompt and discoverable tool descriptions state these scales before
+submission. Fit and attainability assess stated requirements against
 confirmed applicant evidence. Sparse posting details affect confidence and
 unknowns, without a score deduction or ceiling for vagueness alone. Concrete
 qualification gaps and conflicting requirements remain valid scoring evidence.
@@ -117,8 +195,10 @@ deduplication or filtering, and never follows its cursor. Diagnostics report
 `more_results_available` when the response indicates further results. This
 intentional limit is a normal completion, not a warning or error. Structured empty results are distinct from HTTP,
 GraphQL, JSON or response-shape errors. TLS verification remains enabled, and
-there is no proxy rotation or block retry. LinkedIn remains the guest HTML adapter;
-unrecognized empty HTML is reported as uncertain rather than confirmed zero.
+there is no proxy rotation or block retry. LinkedIn uses the guest HTML adapter
+with the provider's past-24-hours filter (`f_TPR=r86400`) for both desktop and MCP
+search runs. Unrecognized empty HTML is reported as uncertain rather than
+confirmed zero.
 The JobSpy MIT notice is bundled as `assets/JobSpy-LICENSE`.
 Every returned, normalized listing is considered for AI matching; residual title,
 keyword and other local search checks do not hide or disqualify provider results.
@@ -389,14 +469,32 @@ process.
 ACP authorization requests open an application-wide modal over the current view,
 including requests from background work. The dialog identifies the configured
 agent and job/conversation task, shows the requested tool action and its supplied
-arguments/paths, and offers Allow once or Deny. Pending requests from concurrent
+arguments/paths, and offers Allow once, Deny, and Always allow when the agent supplies an allow_always option. The agent option name is shown to explain its scope. Pending requests from concurrent
 runs are queued. Cancellation removes that run's prompt, including queued prompts.
 No title, URL, job ID, or CareerShopper name match grants permission. Persistent
-allow options are not offered. Missing UI or invalid/ambiguous options cannot
+permissions require the user to explicitly select the agent-provided option;
+CareerShopper returns its exact option ID and does not create broader approval
+rules. For Codex requests identifying an actual local CareerShopper MCP tool,
+CareerShopper persists the explicit allow_always choice by agent command, helper
+path, workspace, server and tool name. It applies across jobs and app restarts.
+The allow_session choice additionally binds to the ACP session ID, so it survives
+a resumed turn but never grants access to a new session. Changed arguments do not
+invalidate approval of the same tool. Other tools, servers and shell commands
+never inherit the grant; titles alone cannot match. Restricted reviewer/answer
+permissions still apply first. Grants are stored locally in agent-permissions,
+without draft arguments. Automatic reuse is recorded as Allowed by saved
+permission. Unknown agent option scopes remain agent-controlled. Missing UI or invalid/ambiguous options cannot
 authorize a request. Recruiting reviewers and prohibited essay-writer operations
 remain denied by their narrower capability limits.
 
-Approval requests and decisions appear in saved AI activity, readable through
+Partial permission tool updates are joined with earlier tool_call/tool_call_update
+metadata using both session ID and tool-call ID. Current permission fields take
+precedence. The dialog shows the tool, command or inputs, directory, and affected
+paths, with raw protocol JSON in expandable technical details. Opaque requests
+without any action details have approval buttons disabled.
+
+Approval requests and decisions, including tool details and the selected option,
+appear in saved AI activity, readable through
 `ai_conversation_get`. Granting an ACP permission is harness control, deliberately
 UI-only under the parity boundary; there is no MCP tool allowing an agent to
 approve its own requests. The prompt covers `session/request_permission` requests
@@ -575,3 +673,243 @@ queued job starts so newer evaluations and user decisions are preserved.
 Existing `job_get`, `job_evaluation_submit`, and read-only activity tools expose
 the same per-job data. No general ACP launch tool is added. Search polling and
 search enablement are unchanged.
+
+## Fixed resume wording
+
+Profile > Resume content owns exact resume wording in its displayed layout. The
+first read offers an unsaved draft from confirmed, disclosable resume facts;
+private/pending facts are excluded, and achievements are attached only when they
+reference exactly one employment entry. No AI rewrites the prefill. The user
+edits and saves it explicitly, creating a confirmed, versioned `resume_content`
+career fact. Legacy generic facts remain archived for historical references and are not active AI evidence. The editor
+supports adding, editing, removing, enabling and reordering entries and nested
+work-history achievements. Saving checks the previous revision atomically.
+
+New document generation uses structured `resume_plan` and `cover_letter_plan`.
+`resume_content_get` supplies `generation_content`: enabled content with short
+`F1`, `F2`, etc. IDs replacing persistent entry/achievement/detail IDs. The same
+IDs select fixed content (`selected_ids`) and support generated prose
+(`support_ids`). UUIDs and Markdown citation syntax are internal. The active
+work order freezes the mapping to its saved revision. If that revision changes,
+scoped catalog reads, composition and submission reject stale mappings instead
+of silently citing different content. Unscoped reads retain the editable source
+and revision alongside the generation catalog; `resume_compose` previews current
+content without saving.
+
+The AI supplies `professional_headline`, one `summary` object, `direct_match`
+and `core_skills` lists, and flat `selected_ids`. Prose objects contain `text`,
+`support_ids`, and an optional plain `label` rendered in bold. Cover-letter
+`paragraphs` use the same objects. CareerShopper normalizes whitespace, formats
+each paragraph/bullet, resolves evidence and inserts all citation comments.
+The cover-letter assembler supplies the fixed applicant header/contact, stored
+job title and employer, work-order date, greeting and signoff. The resume assembler supplies all fixed wording and section headings,
+retains saved order and title attribution, includes enabled project summaries,
+patents and education, and adds required bullets and complete prerequisite chains.
+For each uncovered nonempty title it selects the highest-priority achievement;
+saved order breaks ties. Empty titles retain their exact title/date without
+invented bullets. Unknown and disabled IDs are rejected. Semantic support still
+requires checking each generated claim against its cited content.
+
+MCP discovery and writer/resume/reviewer instructions use this structured contract.
+Legacy raw documents and exact-text edits remain readable and validatable for
+existing drafts; newly generated plans contain neither revision UUIDs nor raw
+Markdown. All generated references are stored as canonical saved-content revisions.
+
+Raw generated Markdown, draft-handle edits, reviewer revisions and final
+publication are checked against the same fixed assembly. Unknown selections,
+wrong-employer achievements, stale content revisions, changed fixed wording,
+omissions and added sections are rejected. Scoped writers cannot save fixed
+content, and generic fact upserts cannot modify it. Explicit manual document
+edits retain their existing UI/MCP path; existing documents are not rewritten
+automatically. The saved fixed profile controls future generated resumes.
+
+Work-history entries support `titles: [{title, dates, achievements: [{id, text}]}]`,
+with at least one title. The resume editor starts each job with one title and
+provides Add title, edit, reorder, and remove controls. Every title has its own
+exact date-range text and achievements. Drag handles move achievements within a
+title or between titles of the same job, retaining their IDs and wording. Titles
+with achievements cannot be removed until those achievements are moved or removed.
+The same structure and ordering are read and saved through `resume_content_get`
+and `resume_content_save`. Legacy single `title`/`dates`/`achievements` values are
+normalized on read without a database rewrite or revision change; saving uses the
+new structure. Single-title resume output stays the same. Multiple titles appear
+under one employer, each followed by its own selected achievements. Selecting a
+job retains all its title sections. The assembler fills uncovered nonempty titles automatically.
+Titles with no saved achievements retain their heading and dates without
+invented evidence. Structured plans and raw generated Markdown enforce the same
+title attribution, wording, order and coverage for nonempty titles. No database schema
+change is needed because the structure uses the existing versioned career fact.
+
+Achievement selection supports optional `priority` (integer 0 to 100, default 0)
+and `required` (boolean, default false) in both the profile editor and
+`resume_content_save`/`resume_content_get`. Points express relative importance
+for AI selection among relevant evidence; they do not reorder saved achievements
+or force inclusion. The assembler adds required achievements whenever that employment entry is
+selected and fills uncovered nonempty titles using priority and saved order. Omitting the whole job remains permitted. Dragging retains these settings.
+
+Projects retain `description` as their fixed, always-included summary. Their
+optional `details: [{id, text}]` are individual fixed sentences; the editor can
+add, edit, reorder and remove them. `resume_plan.selected_ids` accepts short IDs of optional details; absent selections include summary only. Any subset
+is permitted for enabled projects. The shared composer appends selected sentences
+verbatim in saved order to the summary paragraph. It rejects unknown or disabled IDs and resolves attribution itself. Raw generated Markdown and later
+revisions are validated against the same complete-sentence assembly and required
+achievements. Legacy saved content needs no rewrite: missing priority/required
+means 0/false and missing project details means no optional sentences. These
+fields remain in the existing versioned career-fact JSON; no database schema
+change or automatic rewrite of profile facts/documents is involved.
+
+Achievements may also declare `requires: [achievement_id, ...]`, defaulting to
+no dependencies. The chain-link button on each achievement enters inline prerequisite selection
+mode. Clicking other bullets in the same employment entry toggles their links;
+Done linking or Escape exits selection mode. The source and selected rows are
+highlighted, and arrows connect the dependent bullet to each prerequisite across
+title sections. Connections follow layout, scrolling and reordering. No duplicate
+checklist or repeated prerequisite wording appears in the editor. Wording edits
+retain links; Save fixed wording persists the draft like other profile changes.
+The same IDs are available through `resume_content_get` and editable through
+`resume_content_save`. References must be unique, cannot reference themselves,
+and must belong to the same job (including its other title sections). Saving
+rejects dangling links; the UI explains which dependent bullets must be unlinked
+before deleting a prerequisite. Dragging between titles retains links and IDs.
+
+The structured composer automatically adds every prerequisite of a selected
+bullet. Raw generated Markdown validation rejects missing prerequisites. Every selected prerequisite's
+own links are checked too; mutual dependencies are allowed only when the entire
+group is selected. Required achievements retain these prerequisite obligations.
+Links do not force the whole job into the resume, merge bullets, change wording,
+or override saved order. MCP schemas and generation guidance expose this same
+contract. The existing versioned resume-content JSON stores the links, with no
+schema migration or automatic profile/document changes.
+
+Inline linking is a presentation change: the existing `requires` IDs and shared
+resume-content get/save validation provide full MCP parity. The visible arrows
+represent these same directional data links; MCP does not simulate selection
+mode or drawing operations. Widget tests cover toggling, cross-title links,
+Escape/Done, save/reload, wording edits retaining links, deletion protection and
+layout changes.
+
+
+## Resume content as the sole profile source
+
+The Profile page contains Resume content and Preferences. Generic Career facts
+CRUD and its MCP mutation tools have been removed. The existing revision tables
+remain intact for document history; saving resume content still creates an
+immutable confirmed revision, so no database schema migration is needed.
+
+`profile_get` returns that saved revision in its `facts` evidence envelope and
+preferences for matching. Disabled roles, projects, patents and education remain
+available to matching, with recorded uncertainty intact. Application writer
+scopes, essay writers and material-generation prompts receive enabled content
+only, including scoped `resume_content_get`. Every generated section and cover
+letter must use enabled content. New document validation rejects archived fact
+citations and literal disclosure of disabled entries. Existing document records
+and their revision references are retained.
+
+Work-history entries accept optional `verification_status` (`confirmed` by
+default, or `pending`). Pending imported records must stay disabled. Their UI
+label explains that enabling and saving confirms the displayed wording. This
+keeps uncertain historical records available as context without representing
+migration as factual confirmation. User-requested migration copies missing
+employment and its associated achievements into disabled resume entries and
+preserves existing resume wording and selections.
+
+
+Project detail sentences support the same directional `requires` links as work
+achievements. Each ID must name another sentence in the same project. Self-links,
+duplicates, dangling references, and links to another project or work achievement
+are rejected by `resume_content_save`. `resume_compose` and material validation
+require all prerequisites of every selected sentence, including chained links;
+mutually dependent sentences must be selected together. Selecting no details is
+still valid and keeps the mandatory project summary.
+
+In Profile > Resume content, each detail has a chain button for inline prerequisite
+selection with arrows toward the required sentences. Done or Escape exits linking.
+Drag handles reorder sentences within their project, replacing up/down buttons;
+links follow sentence IDs. A linked prerequisite cannot be deleted until its
+incoming links are removed. These changes use the existing save/revision workflow;
+MCP reads and writes the same ordered `details` array and `requires` IDs through
+`resume_content_get`/`resume_content_save`. No new action or persistence layer is
+needed for the presentation interactions.
+
+
+## Core skills and compact profile sections
+
+Resume content includes `skills: [{id, enabled, name, proficiency, notes}]`.
+These are supporting evidence for matching, answers and tailored document prose,
+not fixed paragraphs automatically printed on a resume. Enabled skills receive
+the same short IDs used for selections and support_ids; disabled skills remain
+matching-only. Proficiency and limitations must be respected in generated claims.
+Old content defaults to an empty skills list without changing its revision.
+
+Core skills appears above Work history in the editor. When either section has
+more than three entries, it starts with three compact summary rows. Show all
+reveals editing, ordering, visibility and removal controls; Show fewer restores
+the preview. Expansion never changes saved visibility or content. Adding an entry
+expands its section. Prerequisite linking prevents collapsing mid-edit.
+
+The explicit Import saved skills action and `resume_content_import_skills`
+(confirmed=true, unavailable in work orders) use the same repository import.
+It imports confirmed disclosable archived skills, preserving proficiency,
+context, experience notes, aliases, last-used information and preference notes.
+Existing IDs or names are skipped without overwriting edits. Pending/private
+records remain archived, and reads never trigger an import. The entire import
+creates one versioned resume-content revision; no database schema change is
+needed. `resume_content_get/save` exposes the same editable skill fields.
+
+
+## Fresh document generation versus resuming
+
+Document panels and stopped document conversations offer separate Resume generation
+and Generate from scratch actions. The latter calls queueApplication with
+fromScratch=true, creates a new work order and agent session, and uses current
+Resume content, writing settings and a fresh evidence catalog. It never reuses
+failed checkpoints, prior reviewer feedback or the old ACP session. Both chat
+surfaces select the new conversation automatically. Previous conversations and
+published/staged documents remain intact; a successful new run replaces active
+documents through the existing publication path. An already-running generation
+must be interrupted first; fresh requests never silently attach to it.
+
+These buttons control the AI harness, so the existing MCP harness-control
+exclusion applies. No general ACP launch tool is added. Saved conversations and
+materials remain available through the existing read-only MCP tools.
+
+
+Permission prompts retain the agent-provided labels for remembered choices.
+An ACP provider may offer both Allow for this session and Always allow with
+kind=allow_always; these remain distinct buttons returning their exact option IDs.
+Provider scope descriptions appear above long tool arguments. Identically named
+options are distinguished by their option IDs without inventing permission scope.
+
+
+Job details show the stable saved job ID with a Copy job ID action. The copied
+value is the same `id` returned by `job_get` and `jobs_search`; all job-scoped MCP
+tools accept it as `job_id`. Inbox/All jobs text search and MCP `jobs_search.query`
+also match the ID, so a copied handle can locate the record again.
+
+Application answers distinguish Codex ACP commentary from final-answer chunks.
+Progress announcements are excluded from the JSON payload; valid answers and
+structured missing-information responses reach the MCP caller unchanged. The
+same factual-support and length checks still apply. Agents without phase metadata
+retain the existing JSON-only response contract.
+
+Company-aware evaluation and writing use the same research guidance in desktop
+prompts and the MCP skill. A complete posting skips posting retrieval, but does
+not suppress research when company products, customers or domain are unclear.
+Research uses available harness web/browser tools, prefers official pages, and
+records source URLs in activity and evaluation summary/strengths. Applicant
+details are never search terms. Blocks stop research; missing context remains an
+uncertainty. Personal fit gives meaningful weight to supported domain and personal
+connections; attainability remains tied to actual requirements. No automatic
+interest bonus or perfect-match score is applied. Evaluation strengths/unknowns
+are supplied to the document writer alongside the existing summary.
+
+Profile > Resume content includes **Personal context**, for confirmed interests,
+domain connections and credentials. `resume_content_get/save` expose the same
+optional `personal_context` list with `id`, `enabled`, `topic`, and `text`. These
+entries share saved fact revisions, short generation IDs, validation and disclosure
+rules. Enabled entries can support letter/summary prose without being printed as
+fixed resume sections; disabled entries remain matching-only. Older saved content
+reads as an empty list, requiring no database migration. Untouched structured
+document prompts upgrade to the company-aware default; custom prompts remain
+intact, with shared factual/research guidance supplied separately. Existing
+scores and letters change only when the user requests reanalysis/regeneration.

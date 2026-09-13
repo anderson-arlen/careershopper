@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 
 import 'database.dart';
+import '../documents/resume_content.dart';
 
 class CareerProfileFact {
   const CareerProfileFact({
@@ -69,6 +70,7 @@ class CareerFactDraft {
     required this.value,
     required this.visibility,
     this.evidenceText,
+    this.expectedRevisionId,
   });
 
   final String? id;
@@ -76,6 +78,7 @@ class CareerFactDraft {
   final Object value;
   final String visibility;
   final String? evidenceText;
+  final String? expectedRevisionId;
 }
 
 class CareerPreferenceDraft {
@@ -195,6 +198,22 @@ class ProfileRepository implements ProfileStore {
     final factId = draft.id ?? _uuid.v7();
     final now = DateTime.now().toUtc();
     await database.transaction(() async {
+      if (kind == resumeContentKind) {
+        if (draft.value is! Map) {
+          throw const FormatException(
+            'Fixed resume content must be structured.',
+          );
+        }
+        ResumeContent((draft.value as Map).cast<String, dynamic>()).validate();
+        final saved = await (database.select(
+          database.careerFacts,
+        )..where((r) => r.kind.equals(resumeContentKind))).getSingleOrNull();
+        if (saved != null &&
+            (saved.id != draft.id ||
+                saved.currentRevisionId != draft.expectedRevisionId)) {
+          throw StateError('Resume content changed. Reload before saving.');
+        }
+      }
       final existing = await (database.select(
         database.careerFacts,
       )..where((row) => row.id.equals(factId))).getSingleOrNull();

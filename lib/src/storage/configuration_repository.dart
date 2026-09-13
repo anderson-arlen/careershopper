@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 
 import '../discovery/discovery_service.dart';
+import '../domain/search_schedule.dart';
 import '../sources/ats_adapters.dart';
 import '../sources/job_source_adapter.dart';
 import '../sources/search_page_adapters.dart';
@@ -22,6 +23,9 @@ class SavedSearchDefinition {
     required this.scoreThreshold,
     required this.query,
     required this.sourceConfigIds,
+    this.scheduleCron,
+    this.nextScheduledAt,
+    this.lastScheduleError,
   });
 
   final String id;
@@ -31,6 +35,9 @@ class SavedSearchDefinition {
   final int scoreThreshold;
   final SavedSearchQuery query;
   final Set<String> sourceConfigIds;
+  final String? scheduleCron;
+  final DateTime? nextScheduledAt;
+  final String? lastScheduleError;
 }
 
 class SavedSearchDraft {
@@ -42,6 +49,7 @@ class SavedSearchDraft {
     required this.scoreThreshold,
     required this.query,
     required this.sourceConfigIds,
+    this.scheduleCron,
   });
 
   final String? id;
@@ -51,6 +59,7 @@ class SavedSearchDraft {
   final int scoreThreshold;
   final SavedSearchQuery query;
   final Set<String> sourceConfigIds;
+  final String? scheduleCron;
 }
 
 class SourceConfiguration {
@@ -357,8 +366,11 @@ class ConfigurationRepository implements ConfigurationStore {
           name: search.name,
           enabled: search.enabled,
           pollIntervalMinutes: search.pollIntervalMinutes,
+          scheduleCron: search.scheduleCron,
+          nextScheduledAt: search.nextScheduledAt,
+          lastScheduleError: search.lastScheduleError,
           scoreThreshold: search.scoreThreshold,
-          query: _decodeQuery(search.name, search.queryJson),
+          query: decodeSavedSearchQuery(search.name, search.queryJson),
           sourceConfigIds: sourceIds,
         );
       }
@@ -412,12 +424,31 @@ class ConfigurationRepository implements ConfigurationStore {
     if (draft.scoreThreshold < 0 || draft.scoreThreshold > 100) {
       throw ArgumentError('AI threshold must be between 0 and 100.');
     }
-    final id = draft.id ?? _uuid.v7();
+    if (draft.sourceConfigIds.length != 1) {
+      throw ArgumentError('Choose exactly one source per search.');
+    }
+    final cron = draft.scheduleCron?.trim();
     final now = DateTime.now().toUtc();
+    final next = cron == null
+        ? now.add(Duration(minutes: draft.pollIntervalMinutes))
+        : SearchSchedule(cron).nextAfter(now);
+    final id = draft.id ?? _uuid.v7();
     await database.transaction(() async {
       final existing = await (database.select(
         database.savedSearches,
       )..where((row) => row.id.equals(id))).getSingleOrNull();
+      final source =
+          await (database.select(database.sourceConfigs)
+                ..where((r) => r.id.equals(draft.sourceConfigIds.single)))
+              .getSingleOrNull();
+      if (source == null) {
+        throw ArgumentError('Selected source no longer exists.');
+      }
+      final scheduleChanged =
+          existing == null ||
+          existing.enabled != draft.enabled ||
+          existing.scheduleCron != cron ||
+          existing.pollIntervalMinutes != draft.pollIntervalMinutes;
       await database
           .into(database.savedSearches)
           .insertOnConflictUpdate(
@@ -426,8 +457,17 @@ class ConfigurationRepository implements ConfigurationStore {
               name: name,
               enabled: Value(draft.enabled),
               pollIntervalMinutes: Value(draft.pollIntervalMinutes),
+              scheduleCron: Value(cron),
+              nextScheduledAt: Value(
+                draft.enabled
+                    ? (scheduleChanged
+                          ? next
+                          : existing.nextScheduledAt ?? next)
+                    : null,
+              ),
+              lastScheduleError: const Value(null),
               scoreThreshold: Value(draft.scoreThreshold),
-              queryJson: jsonEncode(_encodeQuery(draft.query)),
+              queryJson: jsonEncode(encodeSavedSearchQuery(draft.query)),
               createdAt: existing?.createdAt ?? now,
               updatedAt: now,
             ),
@@ -458,14 +498,69 @@ class ConfigurationRepository implements ConfigurationStore {
 
   @override
   Future<void> setSavedSearchEnabled(String id, bool enabled) async {
-    await (database.update(
-      database.savedSearches,
-    )..where((row) => row.id.equals(id))).write(
-      SavedSearchesCompanion(
-        enabled: Value(enabled),
-        updatedAt: Value(DateTime.now().toUtc()),
-      ),
-    );
+    await database.transaction(() async {
+      final search = await (database.select(
+        database.savedSearches,
+      )..where((r) => r.id.equals(id))).getSingleOrNull();
+      if (search == null) throw ArgumentError('Saved search no longer exists.');
+      if (enabled) {
+        final bindings = await (database.select(
+          database.savedSearchSources,
+        )..where((r) => r.savedSearchId.equals(id))).get();
+        if (bindings.length != 1) {
+          throw ArgumentError('Choose exactly one source per search.');
+        }
+      }
+      if (search.enabled == enabled) return;
+      final now = DateTime.now().toUtc();
+      await (database.update(
+        database.savedSearches,
+      )..where((row) => row.id.equals(id))).write(
+        SavedSearchesCompanion(
+          enabled: Value(enabled),
+          nextScheduledAt: Value(enabled ? _nextRun(search, now) : null),
+          lastScheduleError: const Value(null),
+          updatedAt: Value(now),
+        ),
+      );
+    });
+  }
+
+  DateTime _nextRun(SavedSearchRow search, DateTime now) =>
+      search.scheduleCron == null
+      ? now.add(Duration(minutes: search.pollIntervalMinutes))
+      : SearchSchedule(search.scheduleCron!).nextAfter(now);
+
+  /// Advance before dispatch so restarts and concurrent schedulers cannot replay
+  /// an occurrence. Missed occurrences are coalesced into one run.
+  Future<List<String>> claimDueSearches(DateTime now) => database.transaction(
+    () async {
+      final searches = await (database.select(
+        database.savedSearches,
+      )..where((r) => r.enabled.equals(true))).get();
+      final due = <String>[];
+      for (final search in searches) {
+        if (search.nextScheduledAt?.isAfter(now) == true) continue;
+        final bindings = await (database.select(
+          database.savedSearchSources,
+        )..where((r) => r.savedSearchId.equals(search.id))).get();
+        if (bindings.length != 1) continue;
+        await (database.update(
+          database.savedSearches,
+        )..where((r) => r.id.equals(search.id))).write(
+          SavedSearchesCompanion(nextScheduledAt: Value(_nextRun(search, now))),
+        );
+        // Legacy searches get their first deadline without running on upgrade.
+        if (search.nextScheduledAt != null) due.add(search.id);
+      }
+      return due;
+    },
+  );
+
+  Future<void> recordScheduleError(String id, String? error) async {
+    await (database.update(database.savedSearches)
+          ..where((r) => r.id.equals(id)))
+        .write(SavedSearchesCompanion(lastScheduleError: Value(error)));
   }
 
   @override
@@ -474,7 +569,19 @@ class ConfigurationRepository implements ConfigurationStore {
         .where((item) => item.family == draft.sourceFamily)
         .firstOrNull;
     if (type == null) throw ArgumentError('Unsupported source type.');
+    final id = draft.id ?? _uuid.v7();
+    final existing = await (database.select(
+      database.sourceConfigs,
+    )..where((row) => row.id.equals(id))).getSingleOrNull();
     final values = Map<String, Object?>.from(draft.values);
+    if (type.family == 'linkedin' && !values.containsKey('max_pages')) {
+      values['max_pages'] = existing?.sourceFamily == 'linkedin'
+          ? _decodeObject(existing!.configJson)['max_pages'] ?? 1
+          : 1;
+    }
+    if (type.family != 'linkedin' && values.containsKey('max_pages')) {
+      throw ArgumentError('max_pages is only supported for LinkedIn sources.');
+    }
     if (type.employerRequired || values.containsKey('employer_name')) {
       values['employer_name'] = values['employer_name']?.toString().trim();
     }
@@ -487,11 +594,7 @@ class ConfigurationRepository implements ConfigurationStore {
     final check = await adapter.validateConfig(SourceConfig(values));
     if (!check.valid) throw ArgumentError(check.messages.join(' '));
 
-    final id = draft.id ?? _uuid.v7();
     final now = DateTime.now().toUtc();
-    final existing = await (database.select(
-      database.sourceConfigs,
-    )..where((row) => row.id.equals(id))).getSingleOrNull();
     await database
         .into(database.sourceConfigs)
         .insertOnConflictUpdate(
@@ -575,25 +678,15 @@ class ConfigurationRepository implements ConfigurationStore {
     final bindings = await (database.select(
       database.savedSearchSources,
     )..where((row) => row.savedSearchId.equals(id))).get();
-    if (bindings.isEmpty) {
-      throw StateError(
-        'Choose at least one source before running this search.',
-      );
+    if (bindings.length != 1) {
+      throw StateError('Choose exactly one source before running this search.');
     }
-    final query = _decodeQuery(search.name, search.queryJson);
-    final results = <SourceRunResult>[];
-    for (final binding in bindings) {
-      final source =
-          await (database.select(database.sourceConfigs)
-                ..where((row) => row.id.equals(binding.sourceConfigId)))
-              .getSingleOrNull();
-      if (source == null) continue;
-      results.add(await _runSource(search.id, query, source));
-    }
-    if (results.isEmpty) {
-      throw StateError('All sources attached to this search are disabled.');
-    }
-    return SavedSearchRunResult(results);
+    final query = decodeSavedSearchQuery(search.name, search.queryJson);
+    final source =
+        await (database.select(database.sourceConfigs)
+              ..where((row) => row.id.equals(bindings.single.sourceConfigId)))
+            .getSingle();
+    return SavedSearchRunResult([await _runSource(search.id, query, source)]);
   }
 
   Future<SourceRunResult> _runSource(
@@ -846,7 +939,7 @@ Map<String, Object?> _decodeObject(String value) {
   return decoded.map((key, item) => MapEntry(key.toString(), item));
 }
 
-SavedSearchQuery _decodeQuery(String name, String value) {
+SavedSearchQuery decodeSavedSearchQuery(String name, String value) {
   final query = _decodeObject(value);
   return SavedSearchQuery(
     name: name,
@@ -862,7 +955,7 @@ SavedSearchQuery _decodeQuery(String name, String value) {
   );
 }
 
-Map<String, Object?> _encodeQuery(SavedSearchQuery query) => {
+Map<String, Object?> encodeSavedSearchQuery(SavedSearchQuery query) => {
   'included_titles': query.includedTitles,
   'excluded_titles': query.excludedTitles,
   'included_keywords': query.includedKeywords,

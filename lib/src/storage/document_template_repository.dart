@@ -262,6 +262,8 @@ class DocumentTemplateRepository implements DocumentTemplateStore {
         previousSpecializedHeadlineDocumentGenerationPrompt,
         previousDescriptiveProjectHeadingDocumentGenerationPrompt,
         previousBoldProjectStackDocumentGenerationPrompt,
+        previousMarkdownDocumentGenerationPrompt,
+        previousStructuredDocumentGenerationPrompt,
       ].any((previous) => promptText(previous) == savedPromptText);
       if (oldPrompt) {
         settings = ResumeTemplateSettings.fromJson({

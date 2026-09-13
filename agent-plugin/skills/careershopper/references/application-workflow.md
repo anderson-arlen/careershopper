@@ -13,60 +13,47 @@ application state supplied in the scoped request, or read it if absent.
    records Expired without erasing application progress. Inconclusive results
    pass. Do not retry blocked providers; `job_availability_block_clear` clears
    a listing-check block only when directly requested and sends no request.
-2. Generate content from confirmed career facts. Every applicant-specific claim
-   must retain supporting factual references. For document generation, use the
-   short `citation_ref` values supplied with the profile, such as
-   `<!-- facts: F1, F2 -->`. CareerShopper binds these to exact revisions for
-   the work order and stores canonical revision IDs. Never reconstruct UUIDs. Never mention private,
-   confidential, or stealth projects, including names or development status.
-   Linked skills and reviewer feedback do not authorize their disclosure.
-   Use the supplied shared writing style; read writing_style_get if absent. Document-specific
-   instructions control structure; the shared style also applies to essay answers.
-3. Keep resume and cover-letter content in CareerShopper's restricted Markdown
-   structure. The user-editable CareerShopper document template owns typography,
-   margins, spacing, colors, and resume section order. Do not
-   manipulate DOCX XML or formatting in the harness.
-   Supported content includes #/##/### headings, paragraphs, individual - bullets,
-   **bold**, *italic*, two-space hard line breaks, and standalone
-   `<!-- pagebreak -->` (no citation needed for this non-content separator).
-   Optional flat frontmatter uses `---` delimiters and only `document_type`
-   (`resume` or `cover_letter`), `subtitle`, `footer` (exact H1 name), and
-   `page_numbers` (`true`/`false`). Cite a subtitle with a facts comment on the
-   closing `---` line. Do not add arbitrary YAML, HTML, links, images, or code.
-   Use plain public addresses. Every visible content block still needs its own
-   facts comment; formatting never bypasses evidence validation.
-4. Draft both complete documents and call `application_materials_submit` with
-   the pair. Submission validates Markdown, factual references, and completeness
-   before staging; a separate `application_materials_validate` call is optional.
-   Both tools return `draft_id`, including `error.data.draft_id` on content errors.
-   Correct through that handle and `edits`, without repeating both documents.
-   Each edit specifies `document` (`resume` or `cover_letter`), `old_text`
-   matching exactly once, and `new_text`. Set `replace_all: true` explicitly
-   to correct every occurrence in the selected document. A failed edit reports
-   its index and match count; no part of that batch was applied.
-   Do not probe individual blocks or binary-search drafts. Correct the specific
-   diagnostic. Never drop supported accomplishments to silence citation errors.
-   Stop if the same diagnostic persists without progress after two corrections.
-   Use commas, not pipe characters, between contact details.
-   Never use `application_materials_submit` to test a minimal diagnostic draft.
-   Submit both complete documents only after correcting errors. Each needs an
-   H1 name and at least two body blocks totaling 50 words; the resume also needs
-   an H2 section. This is only a sanity floor, not a length target: include all
-   relevant supported evidence, never pad content or invent support. If evidence
-   is insufficient, report the blocker without submitting placeholders.
-   Submission stages documents until the ACP turn succeeds; it does not close
-   the work order. Corrected complete pairs may be resubmitted in the same turn.
-   Desktop generation runs an independent recruiting screen in fresh context,
-   given only the listing and submitted resume/cover letter. End the draft turn
-   after submitting so CareerShopper can run it. Its promote-or-decline report
-   is advisory feedback, never authority to fabricate facts or change job state.
-   When the writer session resumes with that report, improve supported content
-   or explain why it should stand. To edit after review, submit using the
-   supplied `base_material_set_id`, `job_id`, and exact-text `edits`. A corrected submission can set
-   `request_second_review: true` for one optional second screen. At most two
-   screens run per generation; do not launch reviewers yourself.
-   CareerShopper keeps prior documents active if generation fails and owns
-   DOCX/PDF rendering. No export or application is authorized by drafting.
+2. Generate only from enabled saved Resume content. Use the supplied
+   `generation_content` catalog or `resume_content_get`. Select its short IDs
+   (`F1`, `F2`, etc.) in both `selected_ids` and generated text `support_ids`.
+   CareerShopper binds IDs to the work-order revision internally. Never copy or
+   construct UUIDs. Disabled, pending and private evidence cannot be disclosed.
+   Use the shared writing style and check each generated claim against its
+   selected evidence, including employer attribution, scope and chronology.
+   Understand the employer's products, customers and industry as well as its
+   technical requirements. If the listing and supplied source-backed context
+   are insufficient, research the actual employer's official pages with available
+   web/browser tools. Keep useful facts and source URLs in the activity transcript,
+   not as research notes in the letter. Do not send applicant details in searches.
+   Stop on provider blocks; if research is unavailable, use what is known and
+   report the limitation. Connect confirmed domain experience, interests and
+   credentials to the company and role when relevant. Make a meaningful human
+   connection central to the opening or supporting paragraph, paired with
+   evidence of delivery. Personal-context entries are citable evidence, not a
+   fixed resume section. Never invent product use, passion or qualifications,
+   or force an unrelated interest into the letter. Company facts and applicant
+   evidence are separate: company research cannot support applicant claims.
+3. Supply `resume_plan` and `cover_letter_plan` using the schemas described in
+   the main skill. Write plain prose objects, not complete documents or citation
+   comments. CareerShopper supplies Markdown, citations, headers, fixed wording,
+   required/prerequisite bullets, title coverage and cover-letter framing.
+   The document template controls typography, margins, spacing and section order.
+4. Call `application_materials_submit` with the complete structured pair.
+   Assembly and validation happen in that call; preliminary validation is not
+   required. Correct reported factual or ID errors in the plan. Existing
+   assembled drafts can use `draft_id` or `base_material_set_id` with exact-text
+   `edits` for small corrections; new selections require new plans. Each edit
+   needs `document`, uniquely matching `old_text`, and `new_text`; use
+   `replace_all: true` only intentionally. Failed edit batches are atomic.
+   Do not probe blocks, submit placeholders, drop supported achievements to
+   silence errors, or pad unsupported text. Stop if the same diagnostic persists
+   without progress after two corrections. Successful submission stages local
+   drafts until the ACP turn succeeds; it does not apply to the employer.
+   End the turn after success so CareerShopper can run its independent
+   recruiting screen. Improve supported content from its feedback or explain
+   why it should stand. One optional second screen may be requested with
+   `request_second_review: true`. Never launch reviewers yourself. CareerShopper
+   retains prior active documents on failure and owns DOCX/PDF rendering.
 5. Draft answers in chat by default. Only a direct user request to fill the
    specified form permits the harness to enter values, using mouse and keyboard
    controls as described below. Leave final submission to the user.

@@ -1,3 +1,4 @@
+import 'package:careershopper/src/documents/resume_content.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -19,10 +20,25 @@ class FakeWriter implements AcpAgentRunner {
   AcpRunRequest? last;
   late String response;
   Completer<void>? hold;
+  bool progress = false;
   @override
   Future<void> run(AcpRunRequest request) async {
     last = request;
     await hold?.future;
+    if (progress) {
+      await request.onSessionUpdate!({
+        'update': {
+          'sessionUpdate': 'agent_message_chunk',
+          '_meta': {
+            'codex': {'phase': 'commentary'},
+          },
+          'content': {
+            'type': 'text',
+            'text': 'I’m checking the current confirmed applicant record.',
+          },
+        },
+      }, false);
+    }
     // Exercise chunk assembly; thinking/tool text must not become the answer.
     for (final part in [
       response.substring(0, response.length ~/ 2),
@@ -31,6 +47,10 @@ class FakeWriter implements AcpAgentRunner {
       await request.onSessionUpdate!({
         'update': {
           'sessionUpdate': 'agent_message_chunk',
+          if (progress)
+            '_meta': {
+              'codex': {'phase': 'final_answer'},
+            },
           'content': {'type': 'text', 'text': part},
         },
       }, false);
@@ -74,9 +94,12 @@ void main() {
           ),
         );
     await ProfileRepository(db).saveCareerFact(
-      const CareerFactDraft(
-        kind: 'achievement',
-        value: {'statement': 'Built reliable systems.'},
+      CareerFactDraft(
+        kind: 'resume_content',
+        value: {
+          ...ResumeContent.empty(),
+          'header': {'name': 'Alex', 'contact': ''},
+        },
         visibility: 'resume',
       ),
       actor: 'user',
@@ -131,6 +154,32 @@ void main() {
       expect(await db.select(db.aiWorkOrders).get(), isEmpty);
       expect(await db.select(db.aiWorkItems).get(), isEmpty);
       expect(await db.select(db.materialSets).get(), isEmpty);
+    },
+  );
+
+  test(
+    'Codex progress is excluded from a chunked successful JSON answer',
+    () async {
+      runner.progress = true;
+      final result = await generate();
+      expect(result['answer'], 'I built reliable systems.');
+      expect(result['error'], isNull);
+    },
+  );
+
+  test(
+    'Codex progress does not hide valid missing-information details',
+    () async {
+      runner.progress = true;
+      final error = {
+        'code': 'missing_information',
+        'message': 'The profile lacks testing-framework details.',
+        'missing_information': [
+          'Unit and integration test frameworks used for this feature',
+        ],
+      };
+      runner.response = jsonEncode({'error': error});
+      expect((await generate())['error'], error);
     },
   );
 

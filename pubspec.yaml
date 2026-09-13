@@ -34,5 +34,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/fonts/
+    - assets/sources/indeed.png
+    - assets/sources/linkedin.png
     - assets/writing-style.md
     - assets/JobSpy-LICENSE

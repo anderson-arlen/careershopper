@@ -6,69 +6,100 @@ class ChatWorkIndicator extends StatelessWidget {
     required this.onInterrupt,
     this.busy = false,
     this.onRetry,
+    this.onRegenerate,
     super.key,
   });
 
   final String? status;
   final VoidCallback onInterrupt;
   final bool busy;
-  final VoidCallback? onRetry;
+  final VoidCallback? onRetry, onRegenerate;
 
   @override
   Widget build(BuildContext context) {
-    if (status != 'running' &&
-        status != 'interrupted' &&
-        !(status == 'failed' && onRetry != null)) {
+    final running = status == 'running';
+    final stopped =
+        status == 'interrupted' ||
+        (status == 'failed' && (onRetry != null || onRegenerate != null));
+    if (!running &&
+        !stopped &&
+        !(status == 'completed' && onRegenerate != null)) {
       return const SizedBox.shrink();
     }
-    final running = status == 'running';
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (running)
-            const SizedBox.square(
-              dimension: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          else
-            Icon(
-              status == 'failed'
-                  ? Icons.error_outline
-                  : Icons.pause_circle_outline,
-              size: 18,
-            ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              running
-                  ? busy
-                        ? 'Interrupting current turn…'
-                        : 'Agent is working…'
-                  : onRetry != null
-                  ? busy
-                        ? 'Resuming saved work…'
-                        : 'Work stopped. Retry resumes the unfinished step.'
-                  : 'Interrupted. Send a message to continue.',
-              semanticsLabel: running
-                  ? 'Agent is working'
-                  : status == 'failed'
-                  ? 'Agent failed'
-                  : 'Agent interrupted',
-            ),
+          Row(
+            children: [
+              if (running)
+                const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                Icon(
+                  status == 'failed'
+                      ? Icons.error_outline
+                      : status == 'completed'
+                      ? Icons.check_circle_outline
+                      : Icons.pause_circle_outline,
+                  size: 18,
+                ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  running
+                      ? (busy
+                            ? 'Interrupting current turn…'
+                            : 'Agent is working…')
+                      : busy
+                      ? 'Starting document generation…'
+                      : status == 'completed'
+                      ? 'Documents generated.'
+                      : onRegenerate != null
+                      ? 'Work stopped. Resume saved work or generate fresh documents.'
+                      : onRetry != null
+                      ? 'Work stopped. Retry resumes the unfinished step.'
+                      : 'Interrupted. Send a message to continue.',
+                  semanticsLabel: running
+                      ? 'Agent is working'
+                      : status == 'failed'
+                      ? 'Agent failed'
+                      : status == 'completed'
+                      ? 'Agent completed'
+                      : 'Agent interrupted',
+                ),
+              ),
+            ],
           ),
-          if (!running && onRetry != null)
-            OutlinedButton.icon(
-              onPressed: busy ? null : onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-            ),
-          if (running)
-            OutlinedButton.icon(
-              onPressed: busy ? null : onInterrupt,
-              icon: const Icon(Icons.stop),
-              label: const Text('Interrupt'),
-            ),
+          const SizedBox(height: 8),
+          Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (stopped && onRetry != null)
+                OutlinedButton.icon(
+                  onPressed: busy ? null : onRetry,
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('Resume generation'),
+                ),
+              if (!running && onRegenerate != null)
+                OutlinedButton.icon(
+                  onPressed: busy ? null : onRegenerate,
+                  icon: const Icon(Icons.auto_awesome),
+                  label: const Text('Generate from scratch'),
+                ),
+              if (running)
+                OutlinedButton.icon(
+                  onPressed: busy ? null : onInterrupt,
+                  icon: const Icon(Icons.stop),
+                  label: const Text('Interrupt'),
+                ),
+            ],
+          ),
         ],
       ),
     );

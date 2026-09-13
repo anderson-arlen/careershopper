@@ -96,8 +96,8 @@ class _ApplicationMaterialsPanelState extends State<ApplicationMaterialsPanel> {
                       : (status.data == 'failed' ||
                             status.data == 'interrupted')
                       ? draft == null
-                            ? 'Generation paused after an error. Resume below to continue from saved work. See AI → Activity for details.'
-                            : 'Generation paused after an error. Your previous documents and new staged work are preserved. Resume below to continue the unfinished step.'
+                            ? 'Generation paused. Resume saved work or generate from scratch below. See AI → Activity for details.'
+                            : 'Generation paused after an error. Your previous documents and new staged work are preserved. Choose Resume generation or Generate from scratch.'
                       : draft == null
                       ? 'Generate a tailored resume and cover letter to enable Apply. Review is optional.'
                       : draft.reviewed
@@ -121,6 +121,9 @@ class _ApplicationMaterialsPanelState extends State<ApplicationMaterialsPanel> {
                           : () => _run(() async {
                               await widget.harnesses.queueApplication(
                                 widget.job.id,
+                                fromScratch:
+                                    status.data != 'failed' &&
+                                    status.data != 'interrupted',
                               );
                             }),
                       icon: const Icon(Icons.refresh),
@@ -129,9 +132,23 @@ class _ApplicationMaterialsPanelState extends State<ApplicationMaterialsPanel> {
                             ? 'Resume generation'
                             : draft == null
                             ? 'Generate documents'
-                            : 'Regenerate',
+                            : 'Generate from scratch',
                       ),
                     ),
+                    if (status.data == 'failed' || status.data == 'interrupted')
+                      OutlinedButton.icon(
+                        onPressed:
+                            _busy || widget.applying || generating || _dirty
+                            ? null
+                            : () => _run(() async {
+                                await widget.harnesses.queueApplication(
+                                  widget.job.id,
+                                  fromScratch: true,
+                                );
+                              }),
+                        icon: const Icon(Icons.auto_awesome),
+                        label: const Text('Generate from scratch'),
+                      ),
                   ],
                 ),
                 if (_busy || generating) const LinearProgressIndicator(),

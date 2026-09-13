@@ -65,6 +65,7 @@ class AcpStdioClient {
   final AcpPermissionHandler _permissionHandler;
   final AcpNotificationHandler? _notificationHandler;
   final Map<Object, Completer<Object?>> _pending = {};
+  final Map<String, Map<String, Object?>> _toolCalls = {};
   final StringBuffer _stderr = StringBuffer();
   late final StreamSubscription<String> _stdoutSubscription;
   late final StreamSubscription<String> _stderrSubscription;
@@ -222,6 +223,9 @@ class AcpStdioClient {
     final method = message['method'];
     if (method is String) {
       if (id == null) {
+        if (method == 'session/update') {
+          _rememberToolCall(_object(message['params'], '$method params'));
+        }
         final handler = _notificationHandler;
         if (handler != null) {
           await handler(method, _object(message['params'], '$method params'));
@@ -232,7 +236,7 @@ class AcpStdioClient {
         final params = _object(message['params'], '$method params');
         final Object? result;
         if (method == 'session/request_permission') {
-          result = await _permissionHandler(params);
+          result = await _permissionHandler(_permissionContext(params));
         } else {
           throw const AcpRpcError(
             -32601,
@@ -265,6 +269,49 @@ class AcpStdioClient {
     } else {
       completer.complete(message['result']);
     }
+  }
+
+  String? _toolKey(Object? sessionId, Object? toolCallId) =>
+      sessionId is String && toolCallId is String
+      ? jsonEncode([sessionId, toolCallId])
+      : null;
+
+  void _rememberToolCall(Map<String, Object?> params) {
+    final update = params['update'];
+    if (update is! Map ||
+        !{'tool_call', 'tool_call_update'}.contains(update['sessionUpdate'])) {
+      return;
+    }
+    final key = _toolKey(params['sessionId'], update['toolCallId']);
+    if (key == null) return;
+    if ({'completed', 'failed'}.contains(update['status'])) {
+      _toolCalls.remove(key);
+      return;
+    }
+    _toolCalls[key] = {
+      ...?_toolCalls[key],
+      for (final entry in update.entries)
+        if (entry.value != null && entry.key != 'sessionUpdate')
+          entry.key.toString(): entry.value,
+    };
+  }
+
+  Map<String, Object?> _permissionContext(Map<String, Object?> params) {
+    final call = params['toolCall'];
+    if (call is! Map) return params;
+    final key = _toolKey(params['sessionId'], call['toolCallId']);
+    final previous = key == null ? null : _toolCalls[key];
+    if (previous == null) return params;
+    // Permission payloads are often partial ToolCallUpdates. Join only the
+    // same session and call; current fields replace earlier values verbatim.
+    return {
+      ...params,
+      'toolCall': {
+        ...previous,
+        for (final entry in call.entries)
+          if (entry.value != null) entry.key.toString(): entry.value,
+      },
+    };
   }
 
   void _captureStderr(String chunk) {

@@ -12,9 +12,12 @@ import '../storage/configuration_repository.dart';
 import '../storage/database.dart';
 import '../storage/job_repository.dart';
 import '../storage/profile_repository.dart';
+import '../storage/resume_content_repository.dart';
+import '../documents/resume_content.dart';
 import '../storage/application_material_repository.dart';
 import 'mcp_ui_tools.dart';
 import '../storage/employer_logo_repository.dart';
+import '../storage/listing_availability_service.dart';
 
 const _supportedProtocolVersions = {'2026-07-28', '2025-11-25'};
 
@@ -25,6 +28,7 @@ class McpServer {
     String? workOrderId,
     McpUiTools? uiTools,
     ConfigurationRepository? configuration,
+    ListingAvailabilityService? listings,
     bool? answerWriter,
   }) : _answerWriter =
            answerWriter ??
@@ -37,6 +41,7 @@ class McpServer {
         configuration ?? ConfigurationRepository(database, _jobs, uuid: uuid);
     _profile = ProfileRepository(database, uuid: uuid);
     _uiTools = uiTools ?? McpUiTools(database);
+    _listings = listings ?? ListingAvailabilityService(database);
   }
 
   final CareerShopperDatabase database;
@@ -48,6 +53,7 @@ class McpServer {
   late final ConfigurationRepository _configuration;
   late final ProfileRepository _profile;
   late final McpUiTools _uiTools;
+  late final ListingAvailabilityService _listings;
   // One ephemeral pair per MCP process. Handles never cross job/work-order scope.
   ({String id, String jobId, String resume, String coverLetter})?
   _materialDraft;
@@ -191,14 +197,9 @@ class McpServer {
             'jobs_search' => await _jobsSearch(arguments),
             'job_get' => await _jobGet(arguments),
             'profile_get' => await _profileGet(),
-            'profile_facts_upsert_batch' => await _profileFactsUpsertBatch(
-              arguments,
-            ),
             'profile_preferences_upsert' => await _profilePreferencesUpsert(
               arguments,
             ),
-            'profile_fact_verification_set' =>
-              await _profileFactVerificationSet(arguments),
             'saved_searches_list' => await _savedSearchesList(),
             'saved_search_upsert' => await _savedSearchUpsert(arguments),
             'source_configs_list' => await _sourceConfigsList(),
@@ -208,6 +209,7 @@ class McpServer {
             ),
             'saved_search_run' => await _savedSearchRun(arguments),
             'job_import_submit' => await _jobImportSubmit(arguments),
+            'job_posting_fetch' => await _jobPostingFetch(arguments),
             'job_evaluation_submit' => await _jobEvaluationSubmit(arguments),
             'job_review_set' => await _jobReviewSet(arguments),
             'blocked_employers_list' => await _blockedEmployersList(),
@@ -354,6 +356,7 @@ class McpServer {
     'employer_id': job.employerId,
     'title': job.title,
     'employer_name': job.employerName,
+    'source_family': job.sourceFamily,
     'has_employer_logo': job.employerLogoPng != null,
     'employer_logo_source_url': job.employerLogoSourceUrl,
     'location': job.location,
@@ -378,199 +381,45 @@ class McpServer {
         : await (database.select(
             database.aiWorkOrders,
           )..where((row) => row.id.equals(_workOrderId))).getSingleOrNull();
-    if (_answerWriter || order?.kind == 'application_materials') {
-      final facts = await _profile.watchCareerFacts().first;
-      final refs = order == null
-          ? <String, Object?>{}
-          : ((jsonDecode(order.scopeJson) as Map)['citation_refs'] as Map? ??
-                    {})
-                .cast<String, Object?>();
-      return {
-        'facts': facts
-            .where((fact) => fact.canDiscloseInApplications)
-            .map(
-              (fact) => {
-                'fact_id': fact.id,
-                'revision_id': fact.revisionId,
-                if (refs.values.contains(fact.revisionId))
-                  'citation_ref': refs.entries
-                      .firstWhere((entry) => entry.value == fact.revisionId)
-                      .key,
-                'kind': fact.kind,
-                'value': fact.value,
-                'verification_status': fact.verificationStatus,
-                'visibility': fact.visibility,
-              },
-            )
-            .toList(),
-      };
-    }
-    final query = database.select(database.careerFacts).join([
-      innerJoin(
-        database.careerFactRevisions,
-        database.careerFactRevisions.id.equalsExp(
-          database.careerFacts.currentRevisionId,
-        ),
-      ),
-      leftOuterJoin(
-        database.careerSources,
-        database.careerSources.id.equalsExp(
-          database.careerFactRevisions.sourceId,
-        ),
-      ),
-    ]);
-    final rows = await query.get();
-    final preferences = await database.select(database.careerPreferences).get();
+    final forApplications =
+        _answerWriter || order?.kind == 'application_materials';
+    final facts = await ResumeContentRepository(
+      _profile,
+    ).evidence(forMatching: !forApplications);
+    final refs = order == null
+        ? <String, Object?>{}
+        : ((jsonDecode(order.scopeJson) as Map)['citation_refs'] as Map? ?? {})
+              .cast<String, Object?>();
+    final preferences = await _profile.watchCareerPreferences().first;
     return {
-      'facts': rows
-          .map((row) {
-            final fact = row.readTable(database.careerFacts);
-            final revision = row.readTable(database.careerFactRevisions);
-            final source = row.readTableOrNull(database.careerSources);
-            return {
-              'fact_id': fact.id,
-              'revision_id': revision.id,
-              'kind': fact.kind,
-              'value': jsonDecode(revision.valueJson),
-              'verification_status': revision.verificationStatus,
-              'visibility': revision.visibility,
-              'source_id': revision.sourceId,
-              'source_type': source?.sourceType,
-              'source_label': source?.label,
-              'evidence_text': revision.evidenceText,
-            };
-          })
-          .toList(growable: false),
-      'preferences': {
-        for (final preference in preferences)
-          preference.key: jsonDecode(preference.valueJson),
-      },
-      'preference_entries': [
-        for (final preference in preferences)
+      'configured': facts.isNotEmpty,
+      'scope': forApplications ? 'applications' : 'matching',
+      'usage': forApplications
+          ? 'Only enabled resume content is supplied as application evidence.'
+          : 'All resume content is available for matching. Disabled entries are matching context only; do not disclose them in resumes, cover letters, or application answers. Respect any recorded uncertainty.',
+      'facts': [
+        for (final fact in facts)
           {
-            'id': preference.id,
-            'key': preference.key,
-            'value': jsonDecode(preference.valueJson),
+            'fact_id': fact.id,
+            'revision_id': fact.revisionId,
+            if (refs.values.contains(fact.revisionId))
+              'citation_ref': refs.entries
+                  .firstWhere((e) => e.value == fact.revisionId)
+                  .key,
+            'kind': fact.kind,
+            'value': fact.value,
+            'verification_status': fact.verificationStatus,
+            'visibility': fact.visibility,
           },
       ],
+      if (!forApplications) ...{
+        'preferences': {for (final p in preferences) p.key: p.value},
+        'preference_entries': [
+          for (final p in preferences)
+            {'id': p.id, 'key': p.key, 'value': p.value},
+        ],
+      },
     };
-  }
-
-  Future<Map<String, Object?>> _profileFactsUpsertBatch(
-    Map<String, Object?> arguments,
-  ) async {
-    final rawFacts = arguments['facts'];
-    if (rawFacts is! List || rawFacts.isEmpty || rawFacts.length > 100) {
-      throw const _RpcError(
-        -32602,
-        'facts must contain between 1 and 100 items.',
-      );
-    }
-    final provenance = _requiredString(arguments, 'provenance');
-    if (!{'user_statement', 'document_extraction'}.contains(provenance)) {
-      throw const _RpcError(
-        -32602,
-        'provenance must be user_statement or document_extraction.',
-      );
-    }
-    final sourceLabel = _requiredString(arguments, 'source_label');
-    final now = DateTime.now().toUtc();
-    final sourceId = _uuid.v7();
-    final changed = <Map<String, Object?>>[];
-
-    await database.transaction(() async {
-      await database
-          .into(database.careerSources)
-          .insert(
-            CareerSourcesCompanion.insert(
-              id: sourceId,
-              sourceType: provenance,
-              label: sourceLabel,
-              createdAt: now,
-            ),
-          );
-      for (final raw in rawFacts) {
-        final fact = _objectMap(raw);
-        final kind = _requiredString(fact, 'kind');
-        final value = fact['value'];
-        if (value == null) {
-          throw const _RpcError(
-            -32602,
-            'Every fact requires a non-null value.',
-          );
-        }
-        final requestedStatus =
-            (fact['verification_status'] as String?) ?? 'pending';
-        final status = provenance == 'user_statement'
-            ? requestedStatus
-            : 'pending';
-        if (!{'pending', 'confirmed', 'disputed', 'retired'}.contains(status)) {
-          throw _RpcError(-32602, 'Invalid verification_status: $status');
-        }
-        final visibility = (fact['visibility'] as String?) ?? 'resume';
-        if (!{'resume', 'application_only', 'private'}.contains(visibility)) {
-          throw _RpcError(-32602, 'Invalid visibility: $visibility');
-        }
-        final factId = (fact['fact_id'] as String?) ?? _uuid.v7();
-        final existing = await (database.select(
-          database.careerFacts,
-        )..where((row) => row.id.equals(factId))).getSingleOrNull();
-        final previous =
-            await (database.select(database.careerFactRevisions)
-                  ..where((row) => row.factId.equals(factId))
-                  ..orderBy([(row) => OrderingTerm.desc(row.revision)])
-                  ..limit(1))
-                .getSingleOrNull();
-        if (existing == null) {
-          await database
-              .into(database.careerFacts)
-              .insert(
-                CareerFactsCompanion.insert(
-                  id: factId,
-                  kind: kind,
-                  createdAt: now,
-                  updatedAt: now,
-                ),
-              );
-        } else if (existing.kind != kind) {
-          throw _RpcError(
-            -32602,
-            'Fact $factId already exists with kind ${existing.kind}.',
-          );
-        }
-        final revisionId = _uuid.v7();
-        await database
-            .into(database.careerFactRevisions)
-            .insert(
-              CareerFactRevisionsCompanion.insert(
-                id: revisionId,
-                factId: factId,
-                revision: (previous?.revision ?? 0) + 1,
-                valueJson: jsonEncode(value),
-                verificationStatus: status,
-                visibility: visibility,
-                sourceId: Value(sourceId),
-                evidenceText: Value(fact['evidence_text'] as String?),
-                createdBy: 'mcp_harness',
-                createdAt: now,
-              ),
-            );
-        await (database.update(
-          database.careerFacts,
-        )..where((row) => row.id.equals(factId))).write(
-          CareerFactsCompanion(
-            currentRevisionId: Value(revisionId),
-            updatedAt: Value(now),
-          ),
-        );
-        changed.add({
-          'fact_id': factId,
-          'revision_id': revisionId,
-          'verification_status': status,
-        });
-      }
-    });
-    return {'facts': changed, 'source_id': sourceId};
   }
 
   Future<Map<String, Object?>> _profilePreferencesUpsert(
@@ -619,111 +468,80 @@ class McpServer {
     return {'updated_keys': changed};
   }
 
-  Future<Map<String, Object?>> _profileFactVerificationSet(
-    Map<String, Object?> arguments,
-  ) async {
-    if (arguments['confirmed'] != true) {
-      throw const _RpcError(
-        -32602,
-        'confirmed must be true for a career-fact verification change.',
-      );
-    }
-    final factId = _requiredString(arguments, 'fact_id');
-    final status = _requiredString(arguments, 'verification_status');
-    try {
-      await _profile.setFactVerificationStatus(
-        factId,
-        status,
-        actor: 'mcp_harness',
-      );
-    } on ArgumentError catch (error) {
-      throw _RpcError(-32602, error.message?.toString() ?? error.toString());
-    }
-    return {'fact_id': factId, 'verification_status': status};
-  }
-
   Future<Map<String, Object?>> _savedSearchesList() async {
-    final searches = await (database.select(
-      database.savedSearches,
-    )..orderBy([(row) => OrderingTerm.asc(row.name)])).get();
-    final values = <Map<String, Object?>>[];
-    for (final search in searches) {
-      final bindings = await (database.select(
-        database.savedSearchSources,
-      )..where((row) => row.savedSearchId.equals(search.id))).get();
-      values.add({
-        'id': search.id,
-        'name': search.name,
-        'enabled': search.enabled,
-        'poll_interval_minutes': search.pollIntervalMinutes,
-        'score_threshold': search.scoreThreshold,
-        'query': jsonDecode(search.queryJson),
-        'source_config_ids': bindings
-            .map((binding) => binding.sourceConfigId)
-            .toList(growable: false),
-      });
-    }
-    return {'saved_searches': values};
+    final searches = await _configuration.watchSavedSearches().first;
+    return {
+      'saved_searches': [
+        for (final search in searches)
+          {
+            'id': search.id,
+            'name': search.name,
+            'enabled': search.enabled,
+            'poll_interval_minutes': search.pollIntervalMinutes,
+            'schedule_cron': search.scheduleCron,
+            'schedule_timezone': 'local',
+            'next_scheduled_at': search.nextScheduledAt
+                ?.toUtc()
+                .toIso8601String(),
+            'last_schedule_error': search.lastScheduleError,
+            'score_threshold': search.scoreThreshold,
+            'query': encodeSavedSearchQuery(search.query),
+            'source_config_ids': search.sourceConfigIds.toList(),
+          },
+      ],
+    };
   }
 
   Future<Map<String, Object?>> _savedSearchUpsert(
     Map<String, Object?> arguments,
   ) async {
-    final now = DateTime.now().toUtc();
-    final id = (arguments['id'] as String?) ?? _uuid.v7();
+    final id = arguments['id'] as String?;
+    final searches = await _configuration.watchSavedSearches().first;
+    final existing = searches.where((s) => s.id == id).firstOrNull;
     final name = _requiredString(arguments, 'name');
-    final searchQuery = _objectMap(arguments['query']);
-    final threshold = _boundedInt(
-      arguments['score_threshold'],
-      defaultValue: 70,
-      min: 0,
-      max: 100,
-    );
-    final interval = _boundedInt(
-      arguments['poll_interval_minutes'],
-      defaultValue: 60,
-      min: 30,
-      max: 10080,
-    );
-    final existing = await (database.select(
-      database.savedSearches,
-    )..where((row) => row.id.equals(id))).getSingleOrNull();
-    await database.transaction(() async {
-      await database
-          .into(database.savedSearches)
-          .insertOnConflictUpdate(
-            SavedSearchesCompanion.insert(
-              id: id,
-              name: name,
-              enabled: Value((arguments['enabled'] as bool?) ?? true),
-              pollIntervalMinutes: Value(interval),
-              scoreThreshold: Value(threshold),
-              queryJson: jsonEncode(searchQuery),
-              createdAt: existing?.createdAt ?? now,
-              updatedAt: now,
-            ),
-          );
-      if (arguments.containsKey('source_config_ids')) {
-        final sourceIds = _stringArray(
-          arguments['source_config_ids'],
-          'source_config_ids',
-        );
-        await (database.delete(
-          database.savedSearchSources,
-        )..where((row) => row.savedSearchId.equals(id))).go();
-        for (final sourceId in sourceIds) {
-          await database
-              .into(database.savedSearchSources)
-              .insert(
-                SavedSearchSourcesCompanion.insert(
-                  savedSearchId: id,
-                  sourceConfigId: sourceId,
-                ),
-              );
-        }
-      }
-    });
-    return {'id': id, 'created': existing == null};
+    final sourceIds = arguments.containsKey('source_config_ids')
+        ? _stringArray(arguments['source_config_ids'], 'source_config_ids')
+        : existing?.sourceConfigIds.toList() ?? <String>[];
+    if (sourceIds.length != 1) {
+      throw const _RpcError(-32602, 'Choose exactly one source per search.');
+    }
+    final cron = arguments.containsKey('schedule_cron')
+        ? arguments['schedule_cron'] as String?
+        : existing != null
+        ? existing.scheduleCron
+        : arguments.containsKey('poll_interval_minutes')
+        ? null
+        : '0 9 * * *';
+    try {
+      final savedId = await _configuration.saveSavedSearch(
+        SavedSearchDraft(
+          id: id,
+          name: name,
+          enabled: arguments['enabled'] as bool? ?? existing?.enabled ?? true,
+          pollIntervalMinutes: _boundedInt(
+            arguments['poll_interval_minutes'],
+            defaultValue: existing?.pollIntervalMinutes ?? 360,
+            min: 30,
+            max: 10080,
+          ),
+          scheduleCron: cron,
+          scoreThreshold: _boundedInt(
+            arguments['score_threshold'],
+            defaultValue: existing?.scoreThreshold ?? 70,
+            min: 0,
+            max: 100,
+          ),
+          query: decodeSavedSearchQuery(
+            name,
+            jsonEncode(_objectMap(arguments['query'])),
+          ),
+          sourceConfigIds: sourceIds.toSet(),
+        ),
+      );
+      return {'id': savedId, 'created': existing == null};
+    } on ArgumentError catch (error) {
+      throw _RpcError(-32602, error.message.toString());
+    }
   }
 
   Future<Map<String, Object?>> _sourceConfigsList() async {
@@ -738,6 +556,8 @@ class McpServer {
               'enabled': source.enabled,
               'employer_name': source.employerName,
               'board_identifier': source.boardIdentifier,
+              if (source.sourceFamily == 'linkedin')
+                'max_pages': source.values['max_pages'] ?? 1,
               'health_state': source.healthState,
               'health_detail': source.healthDetail,
               'backoff_until': source.backoffUntil?.toIso8601String(),
@@ -767,6 +587,8 @@ class McpServer {
           sourceFamily: family,
           enabled: (arguments['enabled'] as bool?) ?? true,
           values: {
+            if (arguments.containsKey('max_pages'))
+              'max_pages': arguments['max_pages'],
             if (type.employerRequired)
               'employer_name': _requiredString(arguments, 'employer_name'),
             if (type.identifierKey != null)
@@ -818,6 +640,35 @@ class McpServer {
       throw _RpcError(-32602, error.message);
     } on ArgumentError catch (error) {
       throw _RpcError(-32602, error.message?.toString() ?? error.toString());
+    }
+  }
+
+  Future<Map<String, Object?>> _jobPostingFetch(
+    Map<String, Object?> arguments,
+  ) async {
+    final jobId = _requiredString(arguments, 'job_id');
+    await _enforceWorkOrderScope(jobId);
+    if (arguments['confirmed'] != true) {
+      throw const _RpcError(
+        -32602,
+        'confirmed must be true for a user-requested posting retrieval.',
+      );
+    }
+    if (_workOrderId != null) {
+      final order = await (database.select(
+        database.aiWorkOrders,
+      )..where((row) => row.id.equals(_workOrderId))).getSingle();
+      if (!{'manual_job_import', 'search_analysis'}.contains(order.kind)) {
+        throw const _RpcError(
+          -32602,
+          'Posting retrieval is limited to import and search-evaluation work orders.',
+        );
+      }
+    }
+    try {
+      return await _listings.fetchPosting(jobId);
+    } on ArgumentError catch (error) {
+      throw _RpcError(-32602, '${error.message}');
     }
   }
 
@@ -1090,19 +941,76 @@ class McpServer {
   ) async {
     final hasText =
         arguments.containsKey('resume_markdown') ||
-        arguments.containsKey('cover_letter_markdown');
+        arguments.containsKey('resume_plan') ||
+        arguments.containsKey('cover_letter_markdown') ||
+        arguments.containsKey('cover_letter_plan');
     final hasDraft = arguments.containsKey('draft_id');
     final hasBase = arguments.containsKey('base_material_set_id');
     if ([hasText, hasDraft, hasBase].where((value) => value).length != 1) {
       throw const FormatException(
-        'Provide exactly one input: both Markdown documents, draft_id, or base_material_set_id.',
+        'Provide exactly one input: resume_plan plus cover_letter_plan, legacy Markdown documents, draft_id, or base_material_set_id.',
       );
     }
     String resume;
     String coverLetter;
     if (hasText) {
-      resume = _requiredString(arguments, 'resume_markdown');
-      coverLetter = _requiredString(arguments, 'cover_letter_markdown');
+      final structured =
+          arguments['resume_plan'] is Map &&
+              (arguments['resume_plan'] as Map).containsKey('selected_ids') ||
+          arguments.containsKey('cover_letter_plan');
+      ResumeContent? frozenContent;
+      String? frozenRevision;
+      if (structured) {
+        final fact = await ResumeContentRepository(_profile).read();
+        if (fact == null || !citationRefs.values.contains(fact.revisionId)) {
+          throw const FormatException(
+            'Resume content changed since this work order started. Start a new generation to refresh the short-ID catalog.',
+          );
+        }
+        frozenContent = ResumeContent(
+          (fact.value as Map).cast<String, dynamic>(),
+        );
+        frozenRevision = fact.revisionId;
+      }
+      if (arguments.containsKey('resume_plan')) {
+        if (arguments.containsKey('resume_markdown')) {
+          throw const FormatException(
+            'Use resume_plan or resume_markdown, not both.',
+          );
+        }
+        final plan = _objectMap(
+          arguments['resume_plan'],
+        ).cast<String, dynamic>();
+        resume = frozenContent != null
+            ? frozenContent.compose(plan, frozenRevision!)
+            : await ResumeContentRepository(_profile).compose(plan);
+      } else {
+        resume = _requiredString(arguments, 'resume_markdown');
+      }
+      if (arguments.containsKey('cover_letter_plan')) {
+        if (arguments.containsKey('cover_letter_markdown')) {
+          throw const FormatException(
+            'Use cover_letter_plan or cover_letter_markdown, not both.',
+          );
+        }
+        final job = await _jobs.getJob(jobId);
+        final order = await (database.select(
+          database.aiWorkOrders,
+        )..where((r) => r.id.equals(orderId))).getSingle();
+        coverLetter = frozenContent!.composeCoverLetter(
+          _objectMap(arguments['cover_letter_plan']).cast<String, dynamic>(),
+          frozenRevision!,
+          employer: job?.employerName ?? '',
+          jobTitle: job?.title ?? '',
+          draftingDate: order.createdAt
+              .toLocal()
+              .toIso8601String()
+              .split('T')
+              .first,
+        );
+      } else {
+        coverLetter = _requiredString(arguments, 'cover_letter_markdown');
+      }
     } else if (hasDraft) {
       final draft = _materialDraft;
       if (draft == null ||
@@ -1248,6 +1156,7 @@ class McpServer {
       final materials = ApplicationMaterialRepository(database);
       if (validateOnly) {
         await materials.validate(resume, coverLetter);
+        await ResumeContentRepository(_profile).validateGenerated(resume);
         return {
           'valid': true,
           'draft_id': draftId,
@@ -1559,7 +1468,7 @@ const _materialDraftProperties = <String, Object?>{
   },
 };
 
-const _toolDefinitions = <Map<String, Object?>>[
+final _toolDefinitions = <Map<String, Object?>>[
   {
     'name': 'job_availability_block_clear',
     'description':
@@ -1593,14 +1502,14 @@ const _toolDefinitions = <Map<String, Object?>>[
   {
     'name': 'application_materials_validate',
     'description':
-        'Use short citation_ref values such as F1 from the supplied profile in facts comments; they resolve to frozen exact revisions for this work order. Returns an ephemeral draft_id even on validation errors (error.data.draft_id). Submit that handle without repeating Markdown; correct it with exact-text edits. After a reviewer pass use base_material_set_id plus edits to reuse the staged pair. Provide exactly one of both Markdown strings, draft_id, or base_material_set_id. No database write. Read-only Markdown and current confirmed fact-reference validation for both documents in an active materials work order. Saves nothing and does not complete the work order. During generation, validate the complete pair and fix all reported errors together. Do not probe individual blocks or binary-search the document; a valid result does not establish completeness or semantic support. Checks employer attribution using confirmed employment links: a paragraph or work-history heading naming an employer must explicitly identify any other employer whose achievement it cites. Fix reported errors before submitting complete documents.',
+        'Read-only validation of a complete structured resume_plan and cover_letter_plan in the active work order. Returns draft_id for the assembled documents, including error.data.draft_id on content validation failure. Does not save documents or invoke AI. Select saved-content IDs and supply tailored prose with support_ids using those same IDs. CareerShopper assembles headings, fixed wording, required achievements, prerequisite chains, title coverage and citation comments. No AI-authored Markdown or citation syntax is needed. Read resume_content_get if content is absent. Unknown, disabled and stale evidence is rejected. For small corrections to existing assembled documents use draft_id or base_material_set_id plus exact-text edits; for changed selections send new plans. Validation of IDs does not establish semantic support: each generated claim must be supported by the chosen content.',
     'inputSchema': {
       'type': 'object',
       'additionalProperties': false,
       'required': ['job_id'],
       'oneOf': [
         {
-          'required': ['resume_markdown', 'cover_letter_markdown'],
+          'required': ['resume_plan', 'cover_letter_plan'],
         },
         {
           'required': ['draft_id'],
@@ -1611,9 +1520,9 @@ const _toolDefinitions = <Map<String, Object?>>[
       ],
       'properties': {
         'job_id': {'type': 'string'},
+        'resume_plan': resumePlanSchema,
         ..._materialDraftProperties,
-        'resume_markdown': {'type': 'string'},
-        'cover_letter_markdown': {'type': 'string'},
+        'cover_letter_plan': coverLetterPlanSchema,
       },
     },
     'annotations': {'readOnlyHint': true, 'openWorldHint': false},
@@ -1621,14 +1530,14 @@ const _toolDefinitions = <Map<String, Object?>>[
   {
     'name': 'application_materials_submit',
     'description':
-        'Reuse draft_id from validation without repeating either document, or base_material_set_id plus exact-text edits after a reviewer pass. Handles are process-local; base materials must belong to this work order and job. All references, employer attribution and completeness are revalidated before staging. Identify another employer explicitly when using its achievement within an employer-scoped paragraph or section. Provide exactly one of both Markdown strings, draft_id, or base_material_set_id. Stage COMPLETE resume and cover-letter drafts for a user-queued application. Never use this tool for diagnostic or placeholder drafts: use application_materials_validate instead. Each document needs a name H1 and at least two substantive body blocks totaling 50 words; resume also needs an H2 section. This is a sanity floor, not a target length: never pad unsupported content. Every visible content block must end with <!-- facts: F1, F2 --> using the citation_ref values in the supplied profile. Short references are frozen to exact revisions for this work order; canonical revision IDs remain supported. Never guess UUIDs. All references must identify current confirmed non-private facts. Use blank lines between blocks, #/##/### headings, - bullets, **bold**, *italic*, two-space hard line breaks, plain public addresses, and standalone <!-- pagebreak --> separators (no citation for separators). Optional flat frontmatter supports document_type (resume/cover_letter), subtitle, footer (exact H1 name), page_numbers (true/false). Cite subtitle facts on the closing --- line. No other HTML, tables, images, code, Markdown links, or pipes. Corrections can be resubmitted during the same turn. Documents become active only after the ACP turn succeeds. No exporting or application submission occurs.',
+        'Stage a complete structured resume_plan and cover_letter_plan for the user-requested application draft. Documents become active only after the ACP turn succeeds. This saves local drafts; it does not export or submit an application. Select saved-content IDs and supply tailored prose with support_ids using those same IDs. CareerShopper assembles headings, fixed wording, required achievements, prerequisite chains, title coverage and citation comments. No AI-authored Markdown or citation syntax is needed. Read resume_content_get if content is absent. Unknown, disabled and stale evidence is rejected. For small corrections to existing assembled documents use draft_id or base_material_set_id plus exact-text edits; for changed selections send new plans. Validation of IDs does not establish semantic support: each generated claim must be supported by the chosen content.',
     'inputSchema': {
       'type': 'object',
       'additionalProperties': false,
       'required': ['job_id'],
       'oneOf': [
         {
-          'required': ['resume_markdown', 'cover_letter_markdown'],
+          'required': ['resume_plan', 'cover_letter_plan'],
         },
         {
           'required': ['draft_id'],
@@ -1644,9 +1553,9 @@ const _toolDefinitions = <Map<String, Object?>>[
           'description':
               'After incorporating the first recruiting review, request one optional second review of this complete pair. At most two recruiting reviews per generation.',
         },
+        'resume_plan': resumePlanSchema,
         ..._materialDraftProperties,
-        'resume_markdown': {'type': 'string'},
-        'cover_letter_markdown': {'type': 'string'},
+        'cover_letter_plan': coverLetterPlanSchema,
       },
     },
     'annotations': {'readOnlyHint': false, 'openWorldHint': false},
@@ -1665,14 +1574,14 @@ const _toolDefinitions = <Map<String, Object?>>[
   {
     'name': 'jobs_search',
     'description':
-        'Search locally retained jobs. view=all (default) includes hidden and historical jobs, newest first. view=inbox matches the UI to-do queue: jobs awaiting review, ready to apply, or needing an AI retry (ai_error explains the failure). Blocked employers and ended applications are excluded. total_count includes all matches before limit; for view=inbox without a query it is the navigation inbox count. Without a query, Inbox puts AI failures first, then orders each group by overall fit score descending (unscored last), newest and job ID. A query ranks by word-match search_score first and uses the view order for ties.',
+        'Search locally retained jobs. Each result includes source_family from the earliest recorded observation, matching the original-source icon in the job list. view=all (default) includes hidden and historical jobs, newest first. view=inbox matches the UI to-do queue: jobs awaiting review, ready to apply, or needing an AI retry (ai_error explains the failure). Blocked employers and ended applications are excluded. total_count includes all matches before limit; for view=inbox without a query it is the navigation inbox count. Without a query, Inbox puts AI failures first, then orders each group by overall fit score descending (unscored last), newest and job ID. A query ranks by word-match search_score first and uses the view order for ties.',
     'inputSchema': {
       'type': 'object',
       'properties': {
         'query': {
           'type': 'string',
           'description':
-              'Split on whitespace into distinct case-insensitive words; each word earns one point per matching field (title, full saved description, employer name), using literal substring matches. Include jobs matching any word, ordered by search_score descending, with original view ordering for ties. Repeated words or occurrences within a field do not add points. Empty query preserves the full view. Matches the live job-list search box. search_score is text relevance, separate from AI fit scores.',
+              'Split on whitespace into distinct case-insensitive words; each word earns one point per matching field (job ID, title, full saved description, employer name), using literal substring matches. Include jobs matching any word, ordered by search_score descending, with original view ordering for ties. Repeated words or occurrences within a field do not add points. Empty query preserves the full view. Matches the live job-list search box. search_score is text relevance, separate from AI fit scores.',
         },
         'view': {
           'type': 'string',
@@ -1688,7 +1597,7 @@ const _toolDefinitions = <Map<String, Object?>>[
   {
     'name': 'job_get',
     'description':
-        'Get one job with evaluation, workflow state, source provenance, and ai_error when AI work needs a retry.',
+        'Get one job with evaluation, workflow state, source provenance, and ai_error when AI work needs a retry. job.source_family identifies the original source shown in the listing badge (earliest observation; insertion order breaks ties).',
     'inputSchema': {
       'type': 'object',
       'properties': {
@@ -1701,58 +1610,14 @@ const _toolDefinitions = <Map<String, Object?>>[
   },
   {
     'name': 'profile_get',
-    'description': 'Get current structured career facts and preferences.',
+    'description':
+        'Read the saved resume content and preferences used for matching. Disabled entries remain matching context; application writers receive enabled content only. Legacy facts are archived and not returned.',
     'inputSchema': {
       'type': 'object',
       'properties': {},
       'additionalProperties': false,
     },
     'annotations': {'readOnlyHint': true, 'openWorldHint': false},
-  },
-  {
-    'name': 'profile_facts_upsert_batch',
-    'description': 'Create or revise career facts with explicit provenance.',
-    'inputSchema': {
-      'type': 'object',
-      'properties': {
-        'provenance': {
-          'type': 'string',
-          'enum': ['user_statement', 'document_extraction'],
-        },
-        'source_label': {'type': 'string'},
-        'facts': {
-          'type': 'array',
-          'minItems': 1,
-          'maxItems': 100,
-          'items': {
-            'type': 'object',
-            'properties': {
-              'fact_id': {'type': 'string'},
-              'kind': {'type': 'string'},
-              'value': {},
-              'verification_status': {
-                'type': 'string',
-                'enum': ['pending', 'confirmed', 'disputed', 'retired'],
-              },
-              'visibility': {
-                'type': 'string',
-                'enum': ['resume', 'application_only', 'private'],
-              },
-              'evidence_text': {'type': 'string'},
-            },
-            'required': ['kind', 'value'],
-            'additionalProperties': false,
-          },
-        },
-      },
-      'required': ['provenance', 'source_label', 'facts'],
-      'additionalProperties': false,
-    },
-    'annotations': {
-      'readOnlyHint': false,
-      'idempotentHint': false,
-      'openWorldHint': false,
-    },
   },
   {
     'name': 'profile_preferences_upsert',
@@ -1786,32 +1651,9 @@ const _toolDefinitions = <Map<String, Object?>>[
     },
   },
   {
-    'name': 'profile_fact_verification_set',
-    'description':
-        'Confirm or dispute one career fact after an explicit user decision.',
-    'inputSchema': {
-      'type': 'object',
-      'properties': {
-        'fact_id': {'type': 'string'},
-        'verification_status': {
-          'type': 'string',
-          'enum': ['confirmed', 'disputed'],
-        },
-        'confirmed': {'type': 'boolean'},
-      },
-      'required': ['fact_id', 'verification_status', 'confirmed'],
-      'additionalProperties': false,
-    },
-    'annotations': {
-      'readOnlyHint': false,
-      'idempotentHint': true,
-      'openWorldHint': false,
-    },
-  },
-  {
     'name': 'saved_searches_list',
     'description':
-        'List configured saved searches and their local constraints.',
+        'List saved searches, their single source, local-time schedule, next scheduled run (UTC), last scheduling error, and local constraints.',
     'inputSchema': {
       'type': 'object',
       'properties': {},
@@ -1822,14 +1664,21 @@ const _toolDefinitions = <Map<String, Object?>>[
   {
     'name': 'saved_search_upsert',
     'description':
-        'Create or revise a saved search. Preserve existing user-authored search coverage unless the user asks to change it.',
+        'Create or revise a single-source saved search. Schedules run while the desktop app is open; missed occurrences run once on reopening. Provider minimum intervals and blocks still apply. Preserve existing user-authored search coverage unless the user asks to change it.',
     'inputSchema': {
       'type': 'object',
       'properties': {
         'id': {'type': 'string'},
         'name': {'type': 'string'},
         'enabled': {'type': 'boolean'},
+        'schedule_cron': {
+          'type': ['string', 'null'],
+          'description':
+              'Five numeric cron fields in computer local time: minute hour day month weekday. Supports *, lists, ranges, and steps; Sunday is 0 or 7. Example: 0 9 * * * runs daily at 09:00; 0 9,17 * * 1-5 runs weekdays at 09:00 and 17:00. Set null for interval scheduling. Omission preserves the existing schedule; new searches default to daily at 09:00 unless poll_interval_minutes is supplied. Nonexistent DST times are skipped; repeated local times run once.',
+        },
         'poll_interval_minutes': {
+          'description':
+              'Used only when schedule_cron is null. Minutes between scheduled runs; defaults to 360 for a new search.',
           'type': 'integer',
           'minimum': 30,
           'maximum': 10080,
@@ -1837,7 +1686,11 @@ const _toolDefinitions = <Map<String, Object?>>[
         'score_threshold': {'type': 'integer', 'minimum': 0, 'maximum': 100},
         'query': {'type': 'object'},
         'source_config_ids': {
+          'description':
+              'Exactly one configured source ID. Required when creating a search; omission preserves the source when editing.',
           'type': 'array',
+          'minItems': 1,
+          'maxItems': 1,
           'items': {'type': 'string'},
           'uniqueItems': true,
         },
@@ -1881,6 +1734,13 @@ const _toolDefinitions = <Map<String, Object?>>[
               'Optional actual company logo found on the employer listing/website, not the ATS logo. Public HTTPS PNG/JPEG/WebP URL, no authentication, redirects or access-control bypass. Cached locally; failure never fails the listing import.',
         },
         'board_identifier': {'type': 'string'},
+        'max_pages': {
+          'type': 'integer',
+          'minimum': 1,
+          'maximum': 100,
+          'description':
+              'LinkedIn only: maximum result pages per search run. Defaults to 1 for new sources; omitted on edit preserves the current limit. Stops on exhausted/repeated results or provider blocks.',
+        },
         'enabled': {'type': 'boolean'},
       },
       'required': ['source_family'],
@@ -1930,6 +1790,25 @@ const _toolDefinitions = <Map<String, Object?>>[
     },
   },
   {
+    'name': 'job_posting_fetch',
+    'description':
+        'Fetch a saved job source URL locally using CareerShopper HTTP with a Chrome-style User-Agent. Use for a user-requested import/refresh or an incomplete saved search description before web/browser tools. Returns untrusted page text and source_url for extraction with job_import_submit; does not save a description or evaluate. No JavaScript or login cookies. Requires confirmed:true and honors work-order scope and saved provider blocks. On blocked:true stop without retries or tool switching.',
+    'inputSchema': {
+      'type': 'object',
+      'properties': {
+        'job_id': {'type': 'string'},
+        'confirmed': {'type': 'boolean'},
+      },
+      'required': ['job_id', 'confirmed'],
+      'additionalProperties': false,
+    },
+    'annotations': {
+      'readOnlyHint': false,
+      'idempotentHint': false,
+      'openWorldHint': true,
+    },
+  },
+  {
     'name': 'job_import_submit',
     'description':
         'Submit structured details and the complete, non-summarized posting text extracted from a user-supplied job URL.',
@@ -1965,7 +1844,7 @@ const _toolDefinitions = <Map<String, Object?>>[
   {
     'name': 'job_evaluation_submit',
     'description':
-        'Submit one evidence-backed structured job evaluation. $jobEvaluationScoringInstructions',
+        'Submit one evidence-backed structured job evaluation. Complete saved search descriptions, including Indeed API descriptions, can be evaluated directly without browsing or job_import_submit. Retrieve a posting only when the saved description is missing, an excerpt, visibly truncated, or an access/error placeholder; brevity or missing job details alone does not require retrieval. For Indeed retrieval, prefer its saved source URL over the external application URL. $jobEvaluationScoringInstructions',
     'inputSchema': {
       'type': 'object',
       'properties': {
@@ -1981,7 +1860,7 @@ const _toolDefinitions = <Map<String, Object?>>[
           'minimum': 0,
           'maximum': 1,
           'description':
-              'Certainty in the assessment. Missing posting detail reduces confidence, not fit or attainability. Does not affect the overall score.',
+              'Certainty in the assessment, from 0 through 1 inclusive (for 78% confidence, use 0.78, not 78). Missing posting detail reduces confidence, not fit or attainability. Does not affect the overall score.',
         },
         'summary': {'type': 'string'},
         'dimensions': {'type': 'object'},

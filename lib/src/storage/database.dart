@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path/path.dart' as p;
+import 'package:uuid/uuid.dart';
 
 import 'app_data_directory.dart';
 
@@ -16,6 +17,9 @@ class SavedSearches extends Table {
   BoolColumn get enabled => boolean().withDefault(const Constant(true))();
   IntColumn get pollIntervalMinutes =>
       integer().withDefault(const Constant(60))();
+  TextColumn get scheduleCron => text().nullable()();
+  DateTimeColumn get nextScheduledAt => dateTime().nullable()();
+  TextColumn get lastScheduleError => text().nullable()();
   IntColumn get scoreThreshold => integer().withDefault(const Constant(70))();
   TextColumn get queryJson => text()();
   DateTimeColumn get createdAt => dateTime()();
@@ -588,13 +592,17 @@ class CareerShopperDatabase extends _$CareerShopperDatabase {
   }
 
   @override
-  int get schemaVersion => 16;
+  int get schemaVersion => 17;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (migrator) async {
       await migrator.createAll();
       await _createStateChangeTriggers();
+      await customStatement(
+        'CREATE UNIQUE INDEX saved_search_single_source '
+        'ON saved_search_sources(saved_search_id)',
+      );
     },
     onUpgrade: (migrator, from, to) async {
       if (from < 15) {
@@ -832,6 +840,74 @@ class CareerShopperDatabase extends _$CareerShopperDatabase {
           ) WHERE state_changed_at IS NULL
         """);
         await _createStateChangeTriggers();
+      }
+      if (from < 17) {
+        final columns = await customSelect(
+          "PRAGMA table_info('saved_searches')",
+        ).get();
+        for (final column in [
+          savedSearches.scheduleCron,
+          savedSearches.nextScheduledAt,
+          savedSearches.lastScheduleError,
+        ]) {
+          if (!columns.any((row) => row.data['name'] == column.name)) {
+            await migrator.addColumn(savedSearches, column);
+          }
+        }
+        final searches = await select(savedSearches).get();
+        for (final search in searches) {
+          final bindings =
+              await (select(savedSearchSources)
+                    ..where((r) => r.savedSearchId.equals(search.id))
+                    ..orderBy([(r) => OrderingTerm.asc(r.sourceConfigId)]))
+                  .get();
+          for (final binding in bindings.skip(1)) {
+            final source = await (select(
+              sourceConfigs,
+            )..where((r) => r.id.equals(binding.sourceConfigId))).getSingle();
+            final config = jsonDecode(source.configJson) as Map;
+            final label = config['employer_name'] ?? source.sourceFamily;
+            final newId = const Uuid().v7();
+            await into(savedSearches).insert(
+              search
+                  .toCompanion(false)
+                  .copyWith(
+                    id: Value(newId),
+                    name: Value('${search.name} · $label'),
+                  ),
+            );
+            await (update(savedSearchSources)..where(
+                  (r) =>
+                      r.savedSearchId.equals(search.id) &
+                      r.sourceConfigId.equals(source.id),
+                ))
+                .write(
+                  SavedSearchSourcesCompanion(savedSearchId: Value(newId)),
+                );
+            await (update(searchRuns)..where(
+                  (r) =>
+                      r.savedSearchId.equals(search.id) &
+                      r.sourceConfigId.equals(source.id),
+                ))
+                .write(SearchRunsCompanion(savedSearchId: Value(newId)));
+            // Keep historical matches available to both searches; no job is lost.
+            await customStatement(
+              'INSERT INTO job_search_matches '
+              '(job_id, saved_search_id, first_matched_at, last_matched_at, disposition, reasons_json) '
+              'SELECT job_id, ?, first_matched_at, last_matched_at, disposition, reasons_json '
+              'FROM job_search_matches WHERE saved_search_id = ?',
+              [newId, search.id],
+            );
+          }
+        }
+        await customStatement(
+          'UPDATE saved_searches SET enabled = 0 WHERE NOT EXISTS '
+          '(SELECT 1 FROM saved_search_sources WHERE saved_search_id = saved_searches.id)',
+        );
+        await customStatement(
+          'CREATE UNIQUE INDEX IF NOT EXISTS saved_search_single_source '
+          'ON saved_search_sources(saved_search_id)',
+        );
       }
     },
     beforeOpen: (details) async {

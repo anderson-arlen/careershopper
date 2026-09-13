@@ -17,6 +17,19 @@ void main() {
 
   tearDown(() => database.close());
 
+  test('job list retains original source across later imports', () async {
+    final first = await repository.ingest(_listing(sourceFamily: 'linkedin'));
+    await repository.ingestIntoExistingJob(
+      first.jobId,
+      _listing(sourceFamily: 'manual'),
+    );
+    expect((await repository.getJob(first.jobId))!.sourceFamily, 'linkedin');
+    expect(
+      (await repository.watchAllJobs().first).single.sourceFamily,
+      'linkedin',
+    );
+  });
+
   test(
     'job notes persist across ingestion and reject stale or unconfirmed saves',
     () async {

@@ -16455,6 +16455,2465 @@ class AuditEventsCompanion extends UpdateCompanion<AuditEventRow> {
   }
 }
 
+class $InterviewWorkspacesTable extends InterviewWorkspaces
+    with TableInfo<$InterviewWorkspacesTable, InterviewWorkspace> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $InterviewWorkspacesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _jobIdMeta = const VerificationMeta('jobId');
+  @override
+  late final GeneratedColumn<String> jobId = GeneratedColumn<String>(
+    'job_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES jobs (id)',
+    ),
+  );
+  static const VerificationMeta _revisionMeta = const VerificationMeta(
+    'revision',
+  );
+  @override
+  late final GeneratedColumn<int> revision = GeneratedColumn<int>(
+    'revision',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _ladderJsonMeta = const VerificationMeta(
+    'ladderJson',
+  );
+  @override
+  late final GeneratedColumn<String> ladderJson = GeneratedColumn<String>(
+    'ladder_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  static const VerificationMeta _ladderEditedMeta = const VerificationMeta(
+    'ladderEdited',
+  );
+  @override
+  late final GeneratedColumn<bool> ladderEdited = GeneratedColumn<bool>(
+    'ladder_edited',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("ladder_edited" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _overridesJsonMeta = const VerificationMeta(
+    'overridesJson',
+  );
+  @override
+  late final GeneratedColumn<String> overridesJson = GeneratedColumn<String>(
+    'overrides_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('{}'),
+  );
+  static const VerificationMeta _intelIdMeta = const VerificationMeta(
+    'intelId',
+  );
+  @override
+  late final GeneratedColumn<String> intelId = GeneratedColumn<String>(
+    'intel_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _questionsIdMeta = const VerificationMeta(
+    'questionsId',
+  );
+  @override
+  late final GeneratedColumn<String> questionsId = GeneratedColumn<String>(
+    'questions_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _contextIdMeta = const VerificationMeta(
+    'contextId',
+  );
+  @override
+  late final GeneratedColumn<String> contextId = GeneratedColumn<String>(
+    'context_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _preparationStateMeta = const VerificationMeta(
+    'preparationState',
+  );
+  @override
+  late final GeneratedColumn<String> preparationState = GeneratedColumn<String>(
+    'preparation_state',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('needed'),
+  );
+  static const VerificationMeta _preparationErrorMeta = const VerificationMeta(
+    'preparationError',
+  );
+  @override
+  late final GeneratedColumn<String> preparationError = GeneratedColumn<String>(
+    'preparation_error',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    jobId,
+    revision,
+    ladderJson,
+    ladderEdited,
+    overridesJson,
+    intelId,
+    questionsId,
+    contextId,
+    preparationState,
+    preparationError,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'interview_workspaces';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<InterviewWorkspace> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('job_id')) {
+      context.handle(
+        _jobIdMeta,
+        jobId.isAcceptableOrUnknown(data['job_id']!, _jobIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_jobIdMeta);
+    }
+    if (data.containsKey('revision')) {
+      context.handle(
+        _revisionMeta,
+        revision.isAcceptableOrUnknown(data['revision']!, _revisionMeta),
+      );
+    }
+    if (data.containsKey('ladder_json')) {
+      context.handle(
+        _ladderJsonMeta,
+        ladderJson.isAcceptableOrUnknown(data['ladder_json']!, _ladderJsonMeta),
+      );
+    }
+    if (data.containsKey('ladder_edited')) {
+      context.handle(
+        _ladderEditedMeta,
+        ladderEdited.isAcceptableOrUnknown(
+          data['ladder_edited']!,
+          _ladderEditedMeta,
+        ),
+      );
+    }
+    if (data.containsKey('overrides_json')) {
+      context.handle(
+        _overridesJsonMeta,
+        overridesJson.isAcceptableOrUnknown(
+          data['overrides_json']!,
+          _overridesJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('intel_id')) {
+      context.handle(
+        _intelIdMeta,
+        intelId.isAcceptableOrUnknown(data['intel_id']!, _intelIdMeta),
+      );
+    }
+    if (data.containsKey('questions_id')) {
+      context.handle(
+        _questionsIdMeta,
+        questionsId.isAcceptableOrUnknown(
+          data['questions_id']!,
+          _questionsIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('context_id')) {
+      context.handle(
+        _contextIdMeta,
+        contextId.isAcceptableOrUnknown(data['context_id']!, _contextIdMeta),
+      );
+    }
+    if (data.containsKey('preparation_state')) {
+      context.handle(
+        _preparationStateMeta,
+        preparationState.isAcceptableOrUnknown(
+          data['preparation_state']!,
+          _preparationStateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('preparation_error')) {
+      context.handle(
+        _preparationErrorMeta,
+        preparationError.isAcceptableOrUnknown(
+          data['preparation_error']!,
+          _preparationErrorMeta,
+        ),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {jobId};
+  @override
+  InterviewWorkspace map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return InterviewWorkspace(
+      jobId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}job_id'],
+      )!,
+      revision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}revision'],
+      )!,
+      ladderJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}ladder_json'],
+      )!,
+      ladderEdited: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}ladder_edited'],
+      )!,
+      overridesJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}overrides_json'],
+      )!,
+      intelId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}intel_id'],
+      ),
+      questionsId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}questions_id'],
+      ),
+      contextId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}context_id'],
+      ),
+      preparationState: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}preparation_state'],
+      )!,
+      preparationError: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}preparation_error'],
+      ),
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $InterviewWorkspacesTable createAlias(String alias) {
+    return $InterviewWorkspacesTable(attachedDatabase, alias);
+  }
+}
+
+class InterviewWorkspace extends DataClass
+    implements Insertable<InterviewWorkspace> {
+  final String jobId;
+  final int revision;
+  final String ladderJson;
+  final bool ladderEdited;
+  final String overridesJson;
+  final String? intelId;
+  final String? questionsId;
+  final String? contextId;
+  final String preparationState;
+  final String? preparationError;
+  final DateTime updatedAt;
+  const InterviewWorkspace({
+    required this.jobId,
+    required this.revision,
+    required this.ladderJson,
+    required this.ladderEdited,
+    required this.overridesJson,
+    this.intelId,
+    this.questionsId,
+    this.contextId,
+    required this.preparationState,
+    this.preparationError,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['job_id'] = Variable<String>(jobId);
+    map['revision'] = Variable<int>(revision);
+    map['ladder_json'] = Variable<String>(ladderJson);
+    map['ladder_edited'] = Variable<bool>(ladderEdited);
+    map['overrides_json'] = Variable<String>(overridesJson);
+    if (!nullToAbsent || intelId != null) {
+      map['intel_id'] = Variable<String>(intelId);
+    }
+    if (!nullToAbsent || questionsId != null) {
+      map['questions_id'] = Variable<String>(questionsId);
+    }
+    if (!nullToAbsent || contextId != null) {
+      map['context_id'] = Variable<String>(contextId);
+    }
+    map['preparation_state'] = Variable<String>(preparationState);
+    if (!nullToAbsent || preparationError != null) {
+      map['preparation_error'] = Variable<String>(preparationError);
+    }
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  InterviewWorkspacesCompanion toCompanion(bool nullToAbsent) {
+    return InterviewWorkspacesCompanion(
+      jobId: Value(jobId),
+      revision: Value(revision),
+      ladderJson: Value(ladderJson),
+      ladderEdited: Value(ladderEdited),
+      overridesJson: Value(overridesJson),
+      intelId: intelId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(intelId),
+      questionsId: questionsId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(questionsId),
+      contextId: contextId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(contextId),
+      preparationState: Value(preparationState),
+      preparationError: preparationError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(preparationError),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory InterviewWorkspace.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return InterviewWorkspace(
+      jobId: serializer.fromJson<String>(json['jobId']),
+      revision: serializer.fromJson<int>(json['revision']),
+      ladderJson: serializer.fromJson<String>(json['ladderJson']),
+      ladderEdited: serializer.fromJson<bool>(json['ladderEdited']),
+      overridesJson: serializer.fromJson<String>(json['overridesJson']),
+      intelId: serializer.fromJson<String?>(json['intelId']),
+      questionsId: serializer.fromJson<String?>(json['questionsId']),
+      contextId: serializer.fromJson<String?>(json['contextId']),
+      preparationState: serializer.fromJson<String>(json['preparationState']),
+      preparationError: serializer.fromJson<String?>(json['preparationError']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'jobId': serializer.toJson<String>(jobId),
+      'revision': serializer.toJson<int>(revision),
+      'ladderJson': serializer.toJson<String>(ladderJson),
+      'ladderEdited': serializer.toJson<bool>(ladderEdited),
+      'overridesJson': serializer.toJson<String>(overridesJson),
+      'intelId': serializer.toJson<String?>(intelId),
+      'questionsId': serializer.toJson<String?>(questionsId),
+      'contextId': serializer.toJson<String?>(contextId),
+      'preparationState': serializer.toJson<String>(preparationState),
+      'preparationError': serializer.toJson<String?>(preparationError),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  InterviewWorkspace copyWith({
+    String? jobId,
+    int? revision,
+    String? ladderJson,
+    bool? ladderEdited,
+    String? overridesJson,
+    Value<String?> intelId = const Value.absent(),
+    Value<String?> questionsId = const Value.absent(),
+    Value<String?> contextId = const Value.absent(),
+    String? preparationState,
+    Value<String?> preparationError = const Value.absent(),
+    DateTime? updatedAt,
+  }) => InterviewWorkspace(
+    jobId: jobId ?? this.jobId,
+    revision: revision ?? this.revision,
+    ladderJson: ladderJson ?? this.ladderJson,
+    ladderEdited: ladderEdited ?? this.ladderEdited,
+    overridesJson: overridesJson ?? this.overridesJson,
+    intelId: intelId.present ? intelId.value : this.intelId,
+    questionsId: questionsId.present ? questionsId.value : this.questionsId,
+    contextId: contextId.present ? contextId.value : this.contextId,
+    preparationState: preparationState ?? this.preparationState,
+    preparationError: preparationError.present
+        ? preparationError.value
+        : this.preparationError,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  InterviewWorkspace copyWithCompanion(InterviewWorkspacesCompanion data) {
+    return InterviewWorkspace(
+      jobId: data.jobId.present ? data.jobId.value : this.jobId,
+      revision: data.revision.present ? data.revision.value : this.revision,
+      ladderJson: data.ladderJson.present
+          ? data.ladderJson.value
+          : this.ladderJson,
+      ladderEdited: data.ladderEdited.present
+          ? data.ladderEdited.value
+          : this.ladderEdited,
+      overridesJson: data.overridesJson.present
+          ? data.overridesJson.value
+          : this.overridesJson,
+      intelId: data.intelId.present ? data.intelId.value : this.intelId,
+      questionsId: data.questionsId.present
+          ? data.questionsId.value
+          : this.questionsId,
+      contextId: data.contextId.present ? data.contextId.value : this.contextId,
+      preparationState: data.preparationState.present
+          ? data.preparationState.value
+          : this.preparationState,
+      preparationError: data.preparationError.present
+          ? data.preparationError.value
+          : this.preparationError,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('InterviewWorkspace(')
+          ..write('jobId: $jobId, ')
+          ..write('revision: $revision, ')
+          ..write('ladderJson: $ladderJson, ')
+          ..write('ladderEdited: $ladderEdited, ')
+          ..write('overridesJson: $overridesJson, ')
+          ..write('intelId: $intelId, ')
+          ..write('questionsId: $questionsId, ')
+          ..write('contextId: $contextId, ')
+          ..write('preparationState: $preparationState, ')
+          ..write('preparationError: $preparationError, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    jobId,
+    revision,
+    ladderJson,
+    ladderEdited,
+    overridesJson,
+    intelId,
+    questionsId,
+    contextId,
+    preparationState,
+    preparationError,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is InterviewWorkspace &&
+          other.jobId == this.jobId &&
+          other.revision == this.revision &&
+          other.ladderJson == this.ladderJson &&
+          other.ladderEdited == this.ladderEdited &&
+          other.overridesJson == this.overridesJson &&
+          other.intelId == this.intelId &&
+          other.questionsId == this.questionsId &&
+          other.contextId == this.contextId &&
+          other.preparationState == this.preparationState &&
+          other.preparationError == this.preparationError &&
+          other.updatedAt == this.updatedAt);
+}
+
+class InterviewWorkspacesCompanion extends UpdateCompanion<InterviewWorkspace> {
+  final Value<String> jobId;
+  final Value<int> revision;
+  final Value<String> ladderJson;
+  final Value<bool> ladderEdited;
+  final Value<String> overridesJson;
+  final Value<String?> intelId;
+  final Value<String?> questionsId;
+  final Value<String?> contextId;
+  final Value<String> preparationState;
+  final Value<String?> preparationError;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const InterviewWorkspacesCompanion({
+    this.jobId = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.ladderJson = const Value.absent(),
+    this.ladderEdited = const Value.absent(),
+    this.overridesJson = const Value.absent(),
+    this.intelId = const Value.absent(),
+    this.questionsId = const Value.absent(),
+    this.contextId = const Value.absent(),
+    this.preparationState = const Value.absent(),
+    this.preparationError = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  InterviewWorkspacesCompanion.insert({
+    required String jobId,
+    this.revision = const Value.absent(),
+    this.ladderJson = const Value.absent(),
+    this.ladderEdited = const Value.absent(),
+    this.overridesJson = const Value.absent(),
+    this.intelId = const Value.absent(),
+    this.questionsId = const Value.absent(),
+    this.contextId = const Value.absent(),
+    this.preparationState = const Value.absent(),
+    this.preparationError = const Value.absent(),
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : jobId = Value(jobId),
+       updatedAt = Value(updatedAt);
+  static Insertable<InterviewWorkspace> custom({
+    Expression<String>? jobId,
+    Expression<int>? revision,
+    Expression<String>? ladderJson,
+    Expression<bool>? ladderEdited,
+    Expression<String>? overridesJson,
+    Expression<String>? intelId,
+    Expression<String>? questionsId,
+    Expression<String>? contextId,
+    Expression<String>? preparationState,
+    Expression<String>? preparationError,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (jobId != null) 'job_id': jobId,
+      if (revision != null) 'revision': revision,
+      if (ladderJson != null) 'ladder_json': ladderJson,
+      if (ladderEdited != null) 'ladder_edited': ladderEdited,
+      if (overridesJson != null) 'overrides_json': overridesJson,
+      if (intelId != null) 'intel_id': intelId,
+      if (questionsId != null) 'questions_id': questionsId,
+      if (contextId != null) 'context_id': contextId,
+      if (preparationState != null) 'preparation_state': preparationState,
+      if (preparationError != null) 'preparation_error': preparationError,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  InterviewWorkspacesCompanion copyWith({
+    Value<String>? jobId,
+    Value<int>? revision,
+    Value<String>? ladderJson,
+    Value<bool>? ladderEdited,
+    Value<String>? overridesJson,
+    Value<String?>? intelId,
+    Value<String?>? questionsId,
+    Value<String?>? contextId,
+    Value<String>? preparationState,
+    Value<String?>? preparationError,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return InterviewWorkspacesCompanion(
+      jobId: jobId ?? this.jobId,
+      revision: revision ?? this.revision,
+      ladderJson: ladderJson ?? this.ladderJson,
+      ladderEdited: ladderEdited ?? this.ladderEdited,
+      overridesJson: overridesJson ?? this.overridesJson,
+      intelId: intelId ?? this.intelId,
+      questionsId: questionsId ?? this.questionsId,
+      contextId: contextId ?? this.contextId,
+      preparationState: preparationState ?? this.preparationState,
+      preparationError: preparationError ?? this.preparationError,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (jobId.present) {
+      map['job_id'] = Variable<String>(jobId.value);
+    }
+    if (revision.present) {
+      map['revision'] = Variable<int>(revision.value);
+    }
+    if (ladderJson.present) {
+      map['ladder_json'] = Variable<String>(ladderJson.value);
+    }
+    if (ladderEdited.present) {
+      map['ladder_edited'] = Variable<bool>(ladderEdited.value);
+    }
+    if (overridesJson.present) {
+      map['overrides_json'] = Variable<String>(overridesJson.value);
+    }
+    if (intelId.present) {
+      map['intel_id'] = Variable<String>(intelId.value);
+    }
+    if (questionsId.present) {
+      map['questions_id'] = Variable<String>(questionsId.value);
+    }
+    if (contextId.present) {
+      map['context_id'] = Variable<String>(contextId.value);
+    }
+    if (preparationState.present) {
+      map['preparation_state'] = Variable<String>(preparationState.value);
+    }
+    if (preparationError.present) {
+      map['preparation_error'] = Variable<String>(preparationError.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('InterviewWorkspacesCompanion(')
+          ..write('jobId: $jobId, ')
+          ..write('revision: $revision, ')
+          ..write('ladderJson: $ladderJson, ')
+          ..write('ladderEdited: $ladderEdited, ')
+          ..write('overridesJson: $overridesJson, ')
+          ..write('intelId: $intelId, ')
+          ..write('questionsId: $questionsId, ')
+          ..write('contextId: $contextId, ')
+          ..write('preparationState: $preparationState, ')
+          ..write('preparationError: $preparationError, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $InterviewRevisionsTable extends InterviewRevisions
+    with TableInfo<$InterviewRevisionsTable, InterviewRevision> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $InterviewRevisionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _jobIdMeta = const VerificationMeta('jobId');
+  @override
+  late final GeneratedColumn<String> jobId = GeneratedColumn<String>(
+    'job_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES jobs (id)',
+    ),
+  );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _payloadJsonMeta = const VerificationMeta(
+    'payloadJson',
+  );
+  @override
+  late final GeneratedColumn<String> payloadJson = GeneratedColumn<String>(
+    'payload_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    jobId,
+    kind,
+    payloadJson,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'interview_revisions';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<InterviewRevision> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('job_id')) {
+      context.handle(
+        _jobIdMeta,
+        jobId.isAcceptableOrUnknown(data['job_id']!, _jobIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_jobIdMeta);
+    }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_kindMeta);
+    }
+    if (data.containsKey('payload_json')) {
+      context.handle(
+        _payloadJsonMeta,
+        payloadJson.isAcceptableOrUnknown(
+          data['payload_json']!,
+          _payloadJsonMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_payloadJsonMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  InterviewRevision map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return InterviewRevision(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      jobId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}job_id'],
+      )!,
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      payloadJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}payload_json'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $InterviewRevisionsTable createAlias(String alias) {
+    return $InterviewRevisionsTable(attachedDatabase, alias);
+  }
+}
+
+class InterviewRevision extends DataClass
+    implements Insertable<InterviewRevision> {
+  final String id;
+  final String jobId;
+  final String kind;
+  final String payloadJson;
+  final DateTime createdAt;
+  const InterviewRevision({
+    required this.id,
+    required this.jobId,
+    required this.kind,
+    required this.payloadJson,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['job_id'] = Variable<String>(jobId);
+    map['kind'] = Variable<String>(kind);
+    map['payload_json'] = Variable<String>(payloadJson);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  InterviewRevisionsCompanion toCompanion(bool nullToAbsent) {
+    return InterviewRevisionsCompanion(
+      id: Value(id),
+      jobId: Value(jobId),
+      kind: Value(kind),
+      payloadJson: Value(payloadJson),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory InterviewRevision.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return InterviewRevision(
+      id: serializer.fromJson<String>(json['id']),
+      jobId: serializer.fromJson<String>(json['jobId']),
+      kind: serializer.fromJson<String>(json['kind']),
+      payloadJson: serializer.fromJson<String>(json['payloadJson']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'jobId': serializer.toJson<String>(jobId),
+      'kind': serializer.toJson<String>(kind),
+      'payloadJson': serializer.toJson<String>(payloadJson),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  InterviewRevision copyWith({
+    String? id,
+    String? jobId,
+    String? kind,
+    String? payloadJson,
+    DateTime? createdAt,
+  }) => InterviewRevision(
+    id: id ?? this.id,
+    jobId: jobId ?? this.jobId,
+    kind: kind ?? this.kind,
+    payloadJson: payloadJson ?? this.payloadJson,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  InterviewRevision copyWithCompanion(InterviewRevisionsCompanion data) {
+    return InterviewRevision(
+      id: data.id.present ? data.id.value : this.id,
+      jobId: data.jobId.present ? data.jobId.value : this.jobId,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      payloadJson: data.payloadJson.present
+          ? data.payloadJson.value
+          : this.payloadJson,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('InterviewRevision(')
+          ..write('id: $id, ')
+          ..write('jobId: $jobId, ')
+          ..write('kind: $kind, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, jobId, kind, payloadJson, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is InterviewRevision &&
+          other.id == this.id &&
+          other.jobId == this.jobId &&
+          other.kind == this.kind &&
+          other.payloadJson == this.payloadJson &&
+          other.createdAt == this.createdAt);
+}
+
+class InterviewRevisionsCompanion extends UpdateCompanion<InterviewRevision> {
+  final Value<String> id;
+  final Value<String> jobId;
+  final Value<String> kind;
+  final Value<String> payloadJson;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const InterviewRevisionsCompanion({
+    this.id = const Value.absent(),
+    this.jobId = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.payloadJson = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  InterviewRevisionsCompanion.insert({
+    required String id,
+    required String jobId,
+    required String kind,
+    required String payloadJson,
+    required DateTime createdAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       jobId = Value(jobId),
+       kind = Value(kind),
+       payloadJson = Value(payloadJson),
+       createdAt = Value(createdAt);
+  static Insertable<InterviewRevision> custom({
+    Expression<String>? id,
+    Expression<String>? jobId,
+    Expression<String>? kind,
+    Expression<String>? payloadJson,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (jobId != null) 'job_id': jobId,
+      if (kind != null) 'kind': kind,
+      if (payloadJson != null) 'payload_json': payloadJson,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  InterviewRevisionsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? jobId,
+    Value<String>? kind,
+    Value<String>? payloadJson,
+    Value<DateTime>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return InterviewRevisionsCompanion(
+      id: id ?? this.id,
+      jobId: jobId ?? this.jobId,
+      kind: kind ?? this.kind,
+      payloadJson: payloadJson ?? this.payloadJson,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (jobId.present) {
+      map['job_id'] = Variable<String>(jobId.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (payloadJson.present) {
+      map['payload_json'] = Variable<String>(payloadJson.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('InterviewRevisionsCompanion(')
+          ..write('id: $id, ')
+          ..write('jobId: $jobId, ')
+          ..write('kind: $kind, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $InterviewPracticesTable extends InterviewPractices
+    with TableInfo<$InterviewPracticesTable, InterviewPractice> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $InterviewPracticesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _jobIdMeta = const VerificationMeta('jobId');
+  @override
+  late final GeneratedColumn<String> jobId = GeneratedColumn<String>(
+    'job_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES jobs (id)',
+    ),
+  );
+  static const VerificationMeta _stageIdMeta = const VerificationMeta(
+    'stageId',
+  );
+  @override
+  late final GeneratedColumn<String> stageId = GeneratedColumn<String>(
+    'stage_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _requestIdMeta = const VerificationMeta(
+    'requestId',
+  );
+  @override
+  late final GeneratedColumn<String> requestId = GeneratedColumn<String>(
+    'request_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
+  );
+  static const VerificationMeta _requestJsonMeta = const VerificationMeta(
+    'requestJson',
+  );
+  @override
+  late final GeneratedColumn<String> requestJson = GeneratedColumn<String>(
+    'request_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _snapshotJsonMeta = const VerificationMeta(
+    'snapshotJson',
+  );
+  @override
+  late final GeneratedColumn<String> snapshotJson = GeneratedColumn<String>(
+    'snapshot_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('active'),
+  );
+  static const VerificationMeta _revisionMeta = const VerificationMeta(
+    'revision',
+  );
+  @override
+  late final GeneratedColumn<int> revision = GeneratedColumn<int>(
+    'revision',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _debriefMeta = const VerificationMeta(
+    'debrief',
+  );
+  @override
+  late final GeneratedColumn<String> debrief = GeneratedColumn<String>(
+    'debrief',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    jobId,
+    stageId,
+    requestId,
+    requestJson,
+    snapshotJson,
+    status,
+    revision,
+    debrief,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'interview_practices';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<InterviewPractice> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('job_id')) {
+      context.handle(
+        _jobIdMeta,
+        jobId.isAcceptableOrUnknown(data['job_id']!, _jobIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_jobIdMeta);
+    }
+    if (data.containsKey('stage_id')) {
+      context.handle(
+        _stageIdMeta,
+        stageId.isAcceptableOrUnknown(data['stage_id']!, _stageIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_stageIdMeta);
+    }
+    if (data.containsKey('request_id')) {
+      context.handle(
+        _requestIdMeta,
+        requestId.isAcceptableOrUnknown(data['request_id']!, _requestIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_requestIdMeta);
+    }
+    if (data.containsKey('request_json')) {
+      context.handle(
+        _requestJsonMeta,
+        requestJson.isAcceptableOrUnknown(
+          data['request_json']!,
+          _requestJsonMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_requestJsonMeta);
+    }
+    if (data.containsKey('snapshot_json')) {
+      context.handle(
+        _snapshotJsonMeta,
+        snapshotJson.isAcceptableOrUnknown(
+          data['snapshot_json']!,
+          _snapshotJsonMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_snapshotJsonMeta);
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    }
+    if (data.containsKey('revision')) {
+      context.handle(
+        _revisionMeta,
+        revision.isAcceptableOrUnknown(data['revision']!, _revisionMeta),
+      );
+    }
+    if (data.containsKey('debrief')) {
+      context.handle(
+        _debriefMeta,
+        debrief.isAcceptableOrUnknown(data['debrief']!, _debriefMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  InterviewPractice map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return InterviewPractice(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      jobId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}job_id'],
+      )!,
+      stageId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}stage_id'],
+      )!,
+      requestId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}request_id'],
+      )!,
+      requestJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}request_json'],
+      )!,
+      snapshotJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}snapshot_json'],
+      )!,
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+      revision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}revision'],
+      )!,
+      debrief: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}debrief'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $InterviewPracticesTable createAlias(String alias) {
+    return $InterviewPracticesTable(attachedDatabase, alias);
+  }
+}
+
+class InterviewPractice extends DataClass
+    implements Insertable<InterviewPractice> {
+  final String id;
+  final String jobId;
+  final String stageId;
+  final String requestId;
+  final String requestJson;
+  final String snapshotJson;
+  final String status;
+  final int revision;
+  final String debrief;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const InterviewPractice({
+    required this.id,
+    required this.jobId,
+    required this.stageId,
+    required this.requestId,
+    required this.requestJson,
+    required this.snapshotJson,
+    required this.status,
+    required this.revision,
+    required this.debrief,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['job_id'] = Variable<String>(jobId);
+    map['stage_id'] = Variable<String>(stageId);
+    map['request_id'] = Variable<String>(requestId);
+    map['request_json'] = Variable<String>(requestJson);
+    map['snapshot_json'] = Variable<String>(snapshotJson);
+    map['status'] = Variable<String>(status);
+    map['revision'] = Variable<int>(revision);
+    map['debrief'] = Variable<String>(debrief);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  InterviewPracticesCompanion toCompanion(bool nullToAbsent) {
+    return InterviewPracticesCompanion(
+      id: Value(id),
+      jobId: Value(jobId),
+      stageId: Value(stageId),
+      requestId: Value(requestId),
+      requestJson: Value(requestJson),
+      snapshotJson: Value(snapshotJson),
+      status: Value(status),
+      revision: Value(revision),
+      debrief: Value(debrief),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory InterviewPractice.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return InterviewPractice(
+      id: serializer.fromJson<String>(json['id']),
+      jobId: serializer.fromJson<String>(json['jobId']),
+      stageId: serializer.fromJson<String>(json['stageId']),
+      requestId: serializer.fromJson<String>(json['requestId']),
+      requestJson: serializer.fromJson<String>(json['requestJson']),
+      snapshotJson: serializer.fromJson<String>(json['snapshotJson']),
+      status: serializer.fromJson<String>(json['status']),
+      revision: serializer.fromJson<int>(json['revision']),
+      debrief: serializer.fromJson<String>(json['debrief']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'jobId': serializer.toJson<String>(jobId),
+      'stageId': serializer.toJson<String>(stageId),
+      'requestId': serializer.toJson<String>(requestId),
+      'requestJson': serializer.toJson<String>(requestJson),
+      'snapshotJson': serializer.toJson<String>(snapshotJson),
+      'status': serializer.toJson<String>(status),
+      'revision': serializer.toJson<int>(revision),
+      'debrief': serializer.toJson<String>(debrief),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  InterviewPractice copyWith({
+    String? id,
+    String? jobId,
+    String? stageId,
+    String? requestId,
+    String? requestJson,
+    String? snapshotJson,
+    String? status,
+    int? revision,
+    String? debrief,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => InterviewPractice(
+    id: id ?? this.id,
+    jobId: jobId ?? this.jobId,
+    stageId: stageId ?? this.stageId,
+    requestId: requestId ?? this.requestId,
+    requestJson: requestJson ?? this.requestJson,
+    snapshotJson: snapshotJson ?? this.snapshotJson,
+    status: status ?? this.status,
+    revision: revision ?? this.revision,
+    debrief: debrief ?? this.debrief,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  InterviewPractice copyWithCompanion(InterviewPracticesCompanion data) {
+    return InterviewPractice(
+      id: data.id.present ? data.id.value : this.id,
+      jobId: data.jobId.present ? data.jobId.value : this.jobId,
+      stageId: data.stageId.present ? data.stageId.value : this.stageId,
+      requestId: data.requestId.present ? data.requestId.value : this.requestId,
+      requestJson: data.requestJson.present
+          ? data.requestJson.value
+          : this.requestJson,
+      snapshotJson: data.snapshotJson.present
+          ? data.snapshotJson.value
+          : this.snapshotJson,
+      status: data.status.present ? data.status.value : this.status,
+      revision: data.revision.present ? data.revision.value : this.revision,
+      debrief: data.debrief.present ? data.debrief.value : this.debrief,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('InterviewPractice(')
+          ..write('id: $id, ')
+          ..write('jobId: $jobId, ')
+          ..write('stageId: $stageId, ')
+          ..write('requestId: $requestId, ')
+          ..write('requestJson: $requestJson, ')
+          ..write('snapshotJson: $snapshotJson, ')
+          ..write('status: $status, ')
+          ..write('revision: $revision, ')
+          ..write('debrief: $debrief, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    jobId,
+    stageId,
+    requestId,
+    requestJson,
+    snapshotJson,
+    status,
+    revision,
+    debrief,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is InterviewPractice &&
+          other.id == this.id &&
+          other.jobId == this.jobId &&
+          other.stageId == this.stageId &&
+          other.requestId == this.requestId &&
+          other.requestJson == this.requestJson &&
+          other.snapshotJson == this.snapshotJson &&
+          other.status == this.status &&
+          other.revision == this.revision &&
+          other.debrief == this.debrief &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class InterviewPracticesCompanion extends UpdateCompanion<InterviewPractice> {
+  final Value<String> id;
+  final Value<String> jobId;
+  final Value<String> stageId;
+  final Value<String> requestId;
+  final Value<String> requestJson;
+  final Value<String> snapshotJson;
+  final Value<String> status;
+  final Value<int> revision;
+  final Value<String> debrief;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const InterviewPracticesCompanion({
+    this.id = const Value.absent(),
+    this.jobId = const Value.absent(),
+    this.stageId = const Value.absent(),
+    this.requestId = const Value.absent(),
+    this.requestJson = const Value.absent(),
+    this.snapshotJson = const Value.absent(),
+    this.status = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.debrief = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  InterviewPracticesCompanion.insert({
+    required String id,
+    required String jobId,
+    required String stageId,
+    required String requestId,
+    required String requestJson,
+    required String snapshotJson,
+    this.status = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.debrief = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       jobId = Value(jobId),
+       stageId = Value(stageId),
+       requestId = Value(requestId),
+       requestJson = Value(requestJson),
+       snapshotJson = Value(snapshotJson),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<InterviewPractice> custom({
+    Expression<String>? id,
+    Expression<String>? jobId,
+    Expression<String>? stageId,
+    Expression<String>? requestId,
+    Expression<String>? requestJson,
+    Expression<String>? snapshotJson,
+    Expression<String>? status,
+    Expression<int>? revision,
+    Expression<String>? debrief,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (jobId != null) 'job_id': jobId,
+      if (stageId != null) 'stage_id': stageId,
+      if (requestId != null) 'request_id': requestId,
+      if (requestJson != null) 'request_json': requestJson,
+      if (snapshotJson != null) 'snapshot_json': snapshotJson,
+      if (status != null) 'status': status,
+      if (revision != null) 'revision': revision,
+      if (debrief != null) 'debrief': debrief,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  InterviewPracticesCompanion copyWith({
+    Value<String>? id,
+    Value<String>? jobId,
+    Value<String>? stageId,
+    Value<String>? requestId,
+    Value<String>? requestJson,
+    Value<String>? snapshotJson,
+    Value<String>? status,
+    Value<int>? revision,
+    Value<String>? debrief,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return InterviewPracticesCompanion(
+      id: id ?? this.id,
+      jobId: jobId ?? this.jobId,
+      stageId: stageId ?? this.stageId,
+      requestId: requestId ?? this.requestId,
+      requestJson: requestJson ?? this.requestJson,
+      snapshotJson: snapshotJson ?? this.snapshotJson,
+      status: status ?? this.status,
+      revision: revision ?? this.revision,
+      debrief: debrief ?? this.debrief,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (jobId.present) {
+      map['job_id'] = Variable<String>(jobId.value);
+    }
+    if (stageId.present) {
+      map['stage_id'] = Variable<String>(stageId.value);
+    }
+    if (requestId.present) {
+      map['request_id'] = Variable<String>(requestId.value);
+    }
+    if (requestJson.present) {
+      map['request_json'] = Variable<String>(requestJson.value);
+    }
+    if (snapshotJson.present) {
+      map['snapshot_json'] = Variable<String>(snapshotJson.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (revision.present) {
+      map['revision'] = Variable<int>(revision.value);
+    }
+    if (debrief.present) {
+      map['debrief'] = Variable<String>(debrief.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('InterviewPracticesCompanion(')
+          ..write('id: $id, ')
+          ..write('jobId: $jobId, ')
+          ..write('stageId: $stageId, ')
+          ..write('requestId: $requestId, ')
+          ..write('requestJson: $requestJson, ')
+          ..write('snapshotJson: $snapshotJson, ')
+          ..write('status: $status, ')
+          ..write('revision: $revision, ')
+          ..write('debrief: $debrief, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $InterviewExchangesTable extends InterviewExchanges
+    with TableInfo<$InterviewExchangesTable, InterviewExchange> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $InterviewExchangesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _practiceIdMeta = const VerificationMeta(
+    'practiceId',
+  );
+  @override
+  late final GeneratedColumn<String> practiceId = GeneratedColumn<String>(
+    'practice_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES interview_practices (id)',
+    ),
+  );
+  static const VerificationMeta _exchangeIdMeta = const VerificationMeta(
+    'exchangeId',
+  );
+  @override
+  late final GeneratedColumn<String> exchangeId = GeneratedColumn<String>(
+    'exchange_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sequenceMeta = const VerificationMeta(
+    'sequence',
+  );
+  @override
+  late final GeneratedColumn<int> sequence = GeneratedColumn<int>(
+    'sequence',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _revisionMeta = const VerificationMeta(
+    'revision',
+  );
+  @override
+  late final GeneratedColumn<int> revision = GeneratedColumn<int>(
+    'revision',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _payloadJsonMeta = const VerificationMeta(
+    'payloadJson',
+  );
+  @override
+  late final GeneratedColumn<String> payloadJson = GeneratedColumn<String>(
+    'payload_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _historyJsonMeta = const VerificationMeta(
+    'historyJson',
+  );
+  @override
+  late final GeneratedColumn<String> historyJson = GeneratedColumn<String>(
+    'history_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('[]'),
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    practiceId,
+    exchangeId,
+    sequence,
+    revision,
+    payloadJson,
+    historyJson,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'interview_exchanges';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<InterviewExchange> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('practice_id')) {
+      context.handle(
+        _practiceIdMeta,
+        practiceId.isAcceptableOrUnknown(data['practice_id']!, _practiceIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_practiceIdMeta);
+    }
+    if (data.containsKey('exchange_id')) {
+      context.handle(
+        _exchangeIdMeta,
+        exchangeId.isAcceptableOrUnknown(data['exchange_id']!, _exchangeIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_exchangeIdMeta);
+    }
+    if (data.containsKey('sequence')) {
+      context.handle(
+        _sequenceMeta,
+        sequence.isAcceptableOrUnknown(data['sequence']!, _sequenceMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sequenceMeta);
+    }
+    if (data.containsKey('revision')) {
+      context.handle(
+        _revisionMeta,
+        revision.isAcceptableOrUnknown(data['revision']!, _revisionMeta),
+      );
+    }
+    if (data.containsKey('payload_json')) {
+      context.handle(
+        _payloadJsonMeta,
+        payloadJson.isAcceptableOrUnknown(
+          data['payload_json']!,
+          _payloadJsonMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_payloadJsonMeta);
+    }
+    if (data.containsKey('history_json')) {
+      context.handle(
+        _historyJsonMeta,
+        historyJson.isAcceptableOrUnknown(
+          data['history_json']!,
+          _historyJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {practiceId, exchangeId};
+  @override
+  InterviewExchange map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return InterviewExchange(
+      practiceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}practice_id'],
+      )!,
+      exchangeId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}exchange_id'],
+      )!,
+      sequence: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sequence'],
+      )!,
+      revision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}revision'],
+      )!,
+      payloadJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}payload_json'],
+      )!,
+      historyJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}history_json'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $InterviewExchangesTable createAlias(String alias) {
+    return $InterviewExchangesTable(attachedDatabase, alias);
+  }
+}
+
+class InterviewExchange extends DataClass
+    implements Insertable<InterviewExchange> {
+  final String practiceId;
+  final String exchangeId;
+  final int sequence;
+  final int revision;
+  final String payloadJson;
+  final String historyJson;
+  final DateTime updatedAt;
+  const InterviewExchange({
+    required this.practiceId,
+    required this.exchangeId,
+    required this.sequence,
+    required this.revision,
+    required this.payloadJson,
+    required this.historyJson,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['practice_id'] = Variable<String>(practiceId);
+    map['exchange_id'] = Variable<String>(exchangeId);
+    map['sequence'] = Variable<int>(sequence);
+    map['revision'] = Variable<int>(revision);
+    map['payload_json'] = Variable<String>(payloadJson);
+    map['history_json'] = Variable<String>(historyJson);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  InterviewExchangesCompanion toCompanion(bool nullToAbsent) {
+    return InterviewExchangesCompanion(
+      practiceId: Value(practiceId),
+      exchangeId: Value(exchangeId),
+      sequence: Value(sequence),
+      revision: Value(revision),
+      payloadJson: Value(payloadJson),
+      historyJson: Value(historyJson),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory InterviewExchange.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return InterviewExchange(
+      practiceId: serializer.fromJson<String>(json['practiceId']),
+      exchangeId: serializer.fromJson<String>(json['exchangeId']),
+      sequence: serializer.fromJson<int>(json['sequence']),
+      revision: serializer.fromJson<int>(json['revision']),
+      payloadJson: serializer.fromJson<String>(json['payloadJson']),
+      historyJson: serializer.fromJson<String>(json['historyJson']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'practiceId': serializer.toJson<String>(practiceId),
+      'exchangeId': serializer.toJson<String>(exchangeId),
+      'sequence': serializer.toJson<int>(sequence),
+      'revision': serializer.toJson<int>(revision),
+      'payloadJson': serializer.toJson<String>(payloadJson),
+      'historyJson': serializer.toJson<String>(historyJson),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  InterviewExchange copyWith({
+    String? practiceId,
+    String? exchangeId,
+    int? sequence,
+    int? revision,
+    String? payloadJson,
+    String? historyJson,
+    DateTime? updatedAt,
+  }) => InterviewExchange(
+    practiceId: practiceId ?? this.practiceId,
+    exchangeId: exchangeId ?? this.exchangeId,
+    sequence: sequence ?? this.sequence,
+    revision: revision ?? this.revision,
+    payloadJson: payloadJson ?? this.payloadJson,
+    historyJson: historyJson ?? this.historyJson,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  InterviewExchange copyWithCompanion(InterviewExchangesCompanion data) {
+    return InterviewExchange(
+      practiceId: data.practiceId.present
+          ? data.practiceId.value
+          : this.practiceId,
+      exchangeId: data.exchangeId.present
+          ? data.exchangeId.value
+          : this.exchangeId,
+      sequence: data.sequence.present ? data.sequence.value : this.sequence,
+      revision: data.revision.present ? data.revision.value : this.revision,
+      payloadJson: data.payloadJson.present
+          ? data.payloadJson.value
+          : this.payloadJson,
+      historyJson: data.historyJson.present
+          ? data.historyJson.value
+          : this.historyJson,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('InterviewExchange(')
+          ..write('practiceId: $practiceId, ')
+          ..write('exchangeId: $exchangeId, ')
+          ..write('sequence: $sequence, ')
+          ..write('revision: $revision, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('historyJson: $historyJson, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    practiceId,
+    exchangeId,
+    sequence,
+    revision,
+    payloadJson,
+    historyJson,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is InterviewExchange &&
+          other.practiceId == this.practiceId &&
+          other.exchangeId == this.exchangeId &&
+          other.sequence == this.sequence &&
+          other.revision == this.revision &&
+          other.payloadJson == this.payloadJson &&
+          other.historyJson == this.historyJson &&
+          other.updatedAt == this.updatedAt);
+}
+
+class InterviewExchangesCompanion extends UpdateCompanion<InterviewExchange> {
+  final Value<String> practiceId;
+  final Value<String> exchangeId;
+  final Value<int> sequence;
+  final Value<int> revision;
+  final Value<String> payloadJson;
+  final Value<String> historyJson;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const InterviewExchangesCompanion({
+    this.practiceId = const Value.absent(),
+    this.exchangeId = const Value.absent(),
+    this.sequence = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.payloadJson = const Value.absent(),
+    this.historyJson = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  InterviewExchangesCompanion.insert({
+    required String practiceId,
+    required String exchangeId,
+    required int sequence,
+    this.revision = const Value.absent(),
+    required String payloadJson,
+    this.historyJson = const Value.absent(),
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : practiceId = Value(practiceId),
+       exchangeId = Value(exchangeId),
+       sequence = Value(sequence),
+       payloadJson = Value(payloadJson),
+       updatedAt = Value(updatedAt);
+  static Insertable<InterviewExchange> custom({
+    Expression<String>? practiceId,
+    Expression<String>? exchangeId,
+    Expression<int>? sequence,
+    Expression<int>? revision,
+    Expression<String>? payloadJson,
+    Expression<String>? historyJson,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (practiceId != null) 'practice_id': practiceId,
+      if (exchangeId != null) 'exchange_id': exchangeId,
+      if (sequence != null) 'sequence': sequence,
+      if (revision != null) 'revision': revision,
+      if (payloadJson != null) 'payload_json': payloadJson,
+      if (historyJson != null) 'history_json': historyJson,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  InterviewExchangesCompanion copyWith({
+    Value<String>? practiceId,
+    Value<String>? exchangeId,
+    Value<int>? sequence,
+    Value<int>? revision,
+    Value<String>? payloadJson,
+    Value<String>? historyJson,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return InterviewExchangesCompanion(
+      practiceId: practiceId ?? this.practiceId,
+      exchangeId: exchangeId ?? this.exchangeId,
+      sequence: sequence ?? this.sequence,
+      revision: revision ?? this.revision,
+      payloadJson: payloadJson ?? this.payloadJson,
+      historyJson: historyJson ?? this.historyJson,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (practiceId.present) {
+      map['practice_id'] = Variable<String>(practiceId.value);
+    }
+    if (exchangeId.present) {
+      map['exchange_id'] = Variable<String>(exchangeId.value);
+    }
+    if (sequence.present) {
+      map['sequence'] = Variable<int>(sequence.value);
+    }
+    if (revision.present) {
+      map['revision'] = Variable<int>(revision.value);
+    }
+    if (payloadJson.present) {
+      map['payload_json'] = Variable<String>(payloadJson.value);
+    }
+    if (historyJson.present) {
+      map['history_json'] = Variable<String>(historyJson.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('InterviewExchangesCompanion(')
+          ..write('practiceId: $practiceId, ')
+          ..write('exchangeId: $exchangeId, ')
+          ..write('sequence: $sequence, ')
+          ..write('revision: $revision, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('historyJson: $historyJson, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $InterviewSettingsTable extends InterviewSettings
+    with TableInfo<$InterviewSettingsTable, InterviewSetting> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $InterviewSettingsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _autoPrepareMeta = const VerificationMeta(
+    'autoPrepare',
+  );
+  @override
+  late final GeneratedColumn<bool> autoPrepare = GeneratedColumn<bool>(
+    'auto_prepare',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("auto_prepare" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _agentIdMeta = const VerificationMeta(
+    'agentId',
+  );
+  @override
+  late final GeneratedColumn<String> agentId = GeneratedColumn<String>(
+    'agent_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, autoPrepare, agentId];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'interview_settings';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<InterviewSetting> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('auto_prepare')) {
+      context.handle(
+        _autoPrepareMeta,
+        autoPrepare.isAcceptableOrUnknown(
+          data['auto_prepare']!,
+          _autoPrepareMeta,
+        ),
+      );
+    }
+    if (data.containsKey('agent_id')) {
+      context.handle(
+        _agentIdMeta,
+        agentId.isAcceptableOrUnknown(data['agent_id']!, _agentIdMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  InterviewSetting map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return InterviewSetting(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      autoPrepare: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}auto_prepare'],
+      )!,
+      agentId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}agent_id'],
+      ),
+    );
+  }
+
+  @override
+  $InterviewSettingsTable createAlias(String alias) {
+    return $InterviewSettingsTable(attachedDatabase, alias);
+  }
+}
+
+class InterviewSetting extends DataClass
+    implements Insertable<InterviewSetting> {
+  final int id;
+  final bool autoPrepare;
+  final String? agentId;
+  const InterviewSetting({
+    required this.id,
+    required this.autoPrepare,
+    this.agentId,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['auto_prepare'] = Variable<bool>(autoPrepare);
+    if (!nullToAbsent || agentId != null) {
+      map['agent_id'] = Variable<String>(agentId);
+    }
+    return map;
+  }
+
+  InterviewSettingsCompanion toCompanion(bool nullToAbsent) {
+    return InterviewSettingsCompanion(
+      id: Value(id),
+      autoPrepare: Value(autoPrepare),
+      agentId: agentId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(agentId),
+    );
+  }
+
+  factory InterviewSetting.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return InterviewSetting(
+      id: serializer.fromJson<int>(json['id']),
+      autoPrepare: serializer.fromJson<bool>(json['autoPrepare']),
+      agentId: serializer.fromJson<String?>(json['agentId']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'autoPrepare': serializer.toJson<bool>(autoPrepare),
+      'agentId': serializer.toJson<String?>(agentId),
+    };
+  }
+
+  InterviewSetting copyWith({
+    int? id,
+    bool? autoPrepare,
+    Value<String?> agentId = const Value.absent(),
+  }) => InterviewSetting(
+    id: id ?? this.id,
+    autoPrepare: autoPrepare ?? this.autoPrepare,
+    agentId: agentId.present ? agentId.value : this.agentId,
+  );
+  InterviewSetting copyWithCompanion(InterviewSettingsCompanion data) {
+    return InterviewSetting(
+      id: data.id.present ? data.id.value : this.id,
+      autoPrepare: data.autoPrepare.present
+          ? data.autoPrepare.value
+          : this.autoPrepare,
+      agentId: data.agentId.present ? data.agentId.value : this.agentId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('InterviewSetting(')
+          ..write('id: $id, ')
+          ..write('autoPrepare: $autoPrepare, ')
+          ..write('agentId: $agentId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, autoPrepare, agentId);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is InterviewSetting &&
+          other.id == this.id &&
+          other.autoPrepare == this.autoPrepare &&
+          other.agentId == this.agentId);
+}
+
+class InterviewSettingsCompanion extends UpdateCompanion<InterviewSetting> {
+  final Value<int> id;
+  final Value<bool> autoPrepare;
+  final Value<String?> agentId;
+  const InterviewSettingsCompanion({
+    this.id = const Value.absent(),
+    this.autoPrepare = const Value.absent(),
+    this.agentId = const Value.absent(),
+  });
+  InterviewSettingsCompanion.insert({
+    this.id = const Value.absent(),
+    this.autoPrepare = const Value.absent(),
+    this.agentId = const Value.absent(),
+  });
+  static Insertable<InterviewSetting> custom({
+    Expression<int>? id,
+    Expression<bool>? autoPrepare,
+    Expression<String>? agentId,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (autoPrepare != null) 'auto_prepare': autoPrepare,
+      if (agentId != null) 'agent_id': agentId,
+    });
+  }
+
+  InterviewSettingsCompanion copyWith({
+    Value<int>? id,
+    Value<bool>? autoPrepare,
+    Value<String?>? agentId,
+  }) {
+    return InterviewSettingsCompanion(
+      id: id ?? this.id,
+      autoPrepare: autoPrepare ?? this.autoPrepare,
+      agentId: agentId ?? this.agentId,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (autoPrepare.present) {
+      map['auto_prepare'] = Variable<bool>(autoPrepare.value);
+    }
+    if (agentId.present) {
+      map['agent_id'] = Variable<String>(agentId.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('InterviewSettingsCompanion(')
+          ..write('id: $id, ')
+          ..write('autoPrepare: $autoPrepare, ')
+          ..write('agentId: $agentId')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$CareerShopperDatabase extends GeneratedDatabase {
   _$CareerShopperDatabase(QueryExecutor e) : super(e);
   $CareerShopperDatabaseManager get managers =>
@@ -16509,6 +18968,16 @@ abstract class _$CareerShopperDatabase extends GeneratedDatabase {
   late final $MaterialClaimsTable materialClaims = $MaterialClaimsTable(this);
   late final $ArtifactsTable artifacts = $ArtifactsTable(this);
   late final $AuditEventsTable auditEvents = $AuditEventsTable(this);
+  late final $InterviewWorkspacesTable interviewWorkspaces =
+      $InterviewWorkspacesTable(this);
+  late final $InterviewRevisionsTable interviewRevisions =
+      $InterviewRevisionsTable(this);
+  late final $InterviewPracticesTable interviewPractices =
+      $InterviewPracticesTable(this);
+  late final $InterviewExchangesTable interviewExchanges =
+      $InterviewExchangesTable(this);
+  late final $InterviewSettingsTable interviewSettings =
+      $InterviewSettingsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -16544,6 +19013,11 @@ abstract class _$CareerShopperDatabase extends GeneratedDatabase {
     materialClaims,
     artifacts,
     auditEvents,
+    interviewWorkspaces,
+    interviewRevisions,
+    interviewPractices,
+    interviewExchanges,
+    interviewSettings,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -20146,6 +22620,72 @@ final class $$JobsTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<
+    $InterviewWorkspacesTable,
+    List<InterviewWorkspace>
+  >
+  _interviewWorkspacesRefsTable(_$CareerShopperDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.interviewWorkspaces,
+        aliasName: 'jobs__id__interview_workspaces__job_id',
+      );
+
+  $$InterviewWorkspacesTableProcessedTableManager get interviewWorkspacesRefs {
+    final manager = $$InterviewWorkspacesTableTableManager(
+      $_db,
+      $_db.interviewWorkspaces,
+    ).filter((f) => f.jobId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _interviewWorkspacesRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$InterviewRevisionsTable, List<InterviewRevision>>
+  _interviewRevisionsRefsTable(_$CareerShopperDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.interviewRevisions,
+        aliasName: 'jobs__id__interview_revisions__job_id',
+      );
+
+  $$InterviewRevisionsTableProcessedTableManager get interviewRevisionsRefs {
+    final manager = $$InterviewRevisionsTableTableManager(
+      $_db,
+      $_db.interviewRevisions,
+    ).filter((f) => f.jobId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _interviewRevisionsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$InterviewPracticesTable, List<InterviewPractice>>
+  _interviewPracticesRefsTable(_$CareerShopperDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.interviewPractices,
+        aliasName: 'jobs__id__interview_practices__job_id',
+      );
+
+  $$InterviewPracticesTableProcessedTableManager get interviewPracticesRefs {
+    final manager = $$InterviewPracticesTableTableManager(
+      $_db,
+      $_db.interviewPractices,
+    ).filter((f) => f.jobId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _interviewPracticesRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$JobsTableFilterComposer
@@ -20376,6 +22916,81 @@ class $$JobsTableFilterComposer
           }) => $$ApplicationsTableFilterComposer(
             $db: $db,
             $table: $db.applications,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> interviewWorkspacesRefs(
+    Expression<bool> Function($$InterviewWorkspacesTableFilterComposer f) f,
+  ) {
+    final $$InterviewWorkspacesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.interviewWorkspaces,
+      getReferencedColumn: (t) => t.jobId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$InterviewWorkspacesTableFilterComposer(
+            $db: $db,
+            $table: $db.interviewWorkspaces,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> interviewRevisionsRefs(
+    Expression<bool> Function($$InterviewRevisionsTableFilterComposer f) f,
+  ) {
+    final $$InterviewRevisionsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.interviewRevisions,
+      getReferencedColumn: (t) => t.jobId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$InterviewRevisionsTableFilterComposer(
+            $db: $db,
+            $table: $db.interviewRevisions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> interviewPracticesRefs(
+    Expression<bool> Function($$InterviewPracticesTableFilterComposer f) f,
+  ) {
+    final $$InterviewPracticesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.interviewPractices,
+      getReferencedColumn: (t) => t.jobId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$InterviewPracticesTableFilterComposer(
+            $db: $db,
+            $table: $db.interviewPractices,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -20702,6 +23317,84 @@ class $$JobsTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> interviewWorkspacesRefs<T extends Object>(
+    Expression<T> Function($$InterviewWorkspacesTableAnnotationComposer a) f,
+  ) {
+    final $$InterviewWorkspacesTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.interviewWorkspaces,
+          getReferencedColumn: (t) => t.jobId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$InterviewWorkspacesTableAnnotationComposer(
+                $db: $db,
+                $table: $db.interviewWorkspaces,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+
+  Expression<T> interviewRevisionsRefs<T extends Object>(
+    Expression<T> Function($$InterviewRevisionsTableAnnotationComposer a) f,
+  ) {
+    final $$InterviewRevisionsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.interviewRevisions,
+          getReferencedColumn: (t) => t.jobId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$InterviewRevisionsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.interviewRevisions,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+
+  Expression<T> interviewPracticesRefs<T extends Object>(
+    Expression<T> Function($$InterviewPracticesTableAnnotationComposer a) f,
+  ) {
+    final $$InterviewPracticesTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.interviewPractices,
+          getReferencedColumn: (t) => t.jobId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$InterviewPracticesTableAnnotationComposer(
+                $db: $db,
+                $table: $db.interviewPractices,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$JobsTableTableManager
@@ -20725,6 +23418,9 @@ class $$JobsTableTableManager
             bool jobSearchMatchesRefs,
             bool aiWorkOrdersRefs,
             bool applicationsRefs,
+            bool interviewWorkspacesRefs,
+            bool interviewRevisionsRefs,
+            bool interviewPracticesRefs,
           })
         > {
   $$JobsTableTableManager(_$CareerShopperDatabase db, $JobsTable table)
@@ -20815,6 +23511,9 @@ class $$JobsTableTableManager
                 jobSearchMatchesRefs = false,
                 aiWorkOrdersRefs = false,
                 applicationsRefs = false,
+                interviewWorkspacesRefs = false,
+                interviewRevisionsRefs = false,
+                interviewPracticesRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -20825,6 +23524,9 @@ class $$JobsTableTableManager
                     if (jobSearchMatchesRefs) db.jobSearchMatches,
                     if (aiWorkOrdersRefs) db.aiWorkOrders,
                     if (applicationsRefs) db.applications,
+                    if (interviewWorkspacesRefs) db.interviewWorkspaces,
+                    if (interviewRevisionsRefs) db.interviewRevisions,
+                    if (interviewPracticesRefs) db.interviewPractices,
                   ],
                   addJoins:
                       <
@@ -20980,6 +23682,66 @@ class $$JobsTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (interviewWorkspacesRefs)
+                        await $_getPrefetchedData<
+                          JobRow,
+                          $JobsTable,
+                          InterviewWorkspace
+                        >(
+                          currentTable: table,
+                          referencedTable: $$JobsTableReferences
+                              ._interviewWorkspacesRefsTable(db),
+                          managerFromTypedResult: (p0) => $$JobsTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).interviewWorkspacesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.jobId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (interviewRevisionsRefs)
+                        await $_getPrefetchedData<
+                          JobRow,
+                          $JobsTable,
+                          InterviewRevision
+                        >(
+                          currentTable: table,
+                          referencedTable: $$JobsTableReferences
+                              ._interviewRevisionsRefsTable(db),
+                          managerFromTypedResult: (p0) => $$JobsTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).interviewRevisionsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.jobId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (interviewPracticesRefs)
+                        await $_getPrefetchedData<
+                          JobRow,
+                          $JobsTable,
+                          InterviewPractice
+                        >(
+                          currentTable: table,
+                          referencedTable: $$JobsTableReferences
+                              ._interviewPracticesRefsTable(db),
+                          managerFromTypedResult: (p0) => $$JobsTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).interviewPracticesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.jobId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -21008,6 +23770,9 @@ typedef $$JobsTableProcessedTableManager =
         bool jobSearchMatchesRefs,
         bool aiWorkOrdersRefs,
         bool applicationsRefs,
+        bool interviewWorkspacesRefs,
+        bool interviewRevisionsRefs,
+        bool interviewPracticesRefs,
       })
     >;
 typedef $$JobSnapshotsTableCreateCompanionBuilder =
@@ -30985,6 +33750,1920 @@ typedef $$AuditEventsTableProcessedTableManager =
       AuditEventRow,
       PrefetchHooks Function()
     >;
+typedef $$InterviewWorkspacesTableCreateCompanionBuilder =
+    InterviewWorkspacesCompanion Function({
+      required String jobId,
+      Value<int> revision,
+      Value<String> ladderJson,
+      Value<bool> ladderEdited,
+      Value<String> overridesJson,
+      Value<String?> intelId,
+      Value<String?> questionsId,
+      Value<String?> contextId,
+      Value<String> preparationState,
+      Value<String?> preparationError,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$InterviewWorkspacesTableUpdateCompanionBuilder =
+    InterviewWorkspacesCompanion Function({
+      Value<String> jobId,
+      Value<int> revision,
+      Value<String> ladderJson,
+      Value<bool> ladderEdited,
+      Value<String> overridesJson,
+      Value<String?> intelId,
+      Value<String?> questionsId,
+      Value<String?> contextId,
+      Value<String> preparationState,
+      Value<String?> preparationError,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+final class $$InterviewWorkspacesTableReferences
+    extends
+        BaseReferences<
+          _$CareerShopperDatabase,
+          $InterviewWorkspacesTable,
+          InterviewWorkspace
+        > {
+  $$InterviewWorkspacesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $JobsTable _jobIdTable(_$CareerShopperDatabase db) =>
+      db.jobs.createAlias('interview_workspaces__job_id__jobs__id');
+
+  $$JobsTableProcessedTableManager get jobId {
+    final $_column = $_itemColumn<String>('job_id')!;
+
+    final manager = $$JobsTableTableManager(
+      $_db,
+      $_db.jobs,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_jobIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$InterviewWorkspacesTableFilterComposer
+    extends Composer<_$CareerShopperDatabase, $InterviewWorkspacesTable> {
+  $$InterviewWorkspacesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ladderJson => $composableBuilder(
+    column: $table.ladderJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get ladderEdited => $composableBuilder(
+    column: $table.ladderEdited,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get overridesJson => $composableBuilder(
+    column: $table.overridesJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get intelId => $composableBuilder(
+    column: $table.intelId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get questionsId => $composableBuilder(
+    column: $table.questionsId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get contextId => $composableBuilder(
+    column: $table.contextId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get preparationState => $composableBuilder(
+    column: $table.preparationState,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get preparationError => $composableBuilder(
+    column: $table.preparationError,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$JobsTableFilterComposer get jobId {
+    final $$JobsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.jobId,
+      referencedTable: $db.jobs,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$JobsTableFilterComposer(
+            $db: $db,
+            $table: $db.jobs,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$InterviewWorkspacesTableOrderingComposer
+    extends Composer<_$CareerShopperDatabase, $InterviewWorkspacesTable> {
+  $$InterviewWorkspacesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get ladderJson => $composableBuilder(
+    column: $table.ladderJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get ladderEdited => $composableBuilder(
+    column: $table.ladderEdited,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get overridesJson => $composableBuilder(
+    column: $table.overridesJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get intelId => $composableBuilder(
+    column: $table.intelId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get questionsId => $composableBuilder(
+    column: $table.questionsId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get contextId => $composableBuilder(
+    column: $table.contextId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get preparationState => $composableBuilder(
+    column: $table.preparationState,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get preparationError => $composableBuilder(
+    column: $table.preparationError,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$JobsTableOrderingComposer get jobId {
+    final $$JobsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.jobId,
+      referencedTable: $db.jobs,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$JobsTableOrderingComposer(
+            $db: $db,
+            $table: $db.jobs,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$InterviewWorkspacesTableAnnotationComposer
+    extends Composer<_$CareerShopperDatabase, $InterviewWorkspacesTable> {
+  $$InterviewWorkspacesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get revision =>
+      $composableBuilder(column: $table.revision, builder: (column) => column);
+
+  GeneratedColumn<String> get ladderJson => $composableBuilder(
+    column: $table.ladderJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get ladderEdited => $composableBuilder(
+    column: $table.ladderEdited,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get overridesJson => $composableBuilder(
+    column: $table.overridesJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get intelId =>
+      $composableBuilder(column: $table.intelId, builder: (column) => column);
+
+  GeneratedColumn<String> get questionsId => $composableBuilder(
+    column: $table.questionsId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get contextId =>
+      $composableBuilder(column: $table.contextId, builder: (column) => column);
+
+  GeneratedColumn<String> get preparationState => $composableBuilder(
+    column: $table.preparationState,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get preparationError => $composableBuilder(
+    column: $table.preparationError,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$JobsTableAnnotationComposer get jobId {
+    final $$JobsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.jobId,
+      referencedTable: $db.jobs,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$JobsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.jobs,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$InterviewWorkspacesTableTableManager
+    extends
+        RootTableManager<
+          _$CareerShopperDatabase,
+          $InterviewWorkspacesTable,
+          InterviewWorkspace,
+          $$InterviewWorkspacesTableFilterComposer,
+          $$InterviewWorkspacesTableOrderingComposer,
+          $$InterviewWorkspacesTableAnnotationComposer,
+          $$InterviewWorkspacesTableCreateCompanionBuilder,
+          $$InterviewWorkspacesTableUpdateCompanionBuilder,
+          (InterviewWorkspace, $$InterviewWorkspacesTableReferences),
+          InterviewWorkspace,
+          PrefetchHooks Function({bool jobId})
+        > {
+  $$InterviewWorkspacesTableTableManager(
+    _$CareerShopperDatabase db,
+    $InterviewWorkspacesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$InterviewWorkspacesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$InterviewWorkspacesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$InterviewWorkspacesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> jobId = const Value.absent(),
+                Value<int> revision = const Value.absent(),
+                Value<String> ladderJson = const Value.absent(),
+                Value<bool> ladderEdited = const Value.absent(),
+                Value<String> overridesJson = const Value.absent(),
+                Value<String?> intelId = const Value.absent(),
+                Value<String?> questionsId = const Value.absent(),
+                Value<String?> contextId = const Value.absent(),
+                Value<String> preparationState = const Value.absent(),
+                Value<String?> preparationError = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => InterviewWorkspacesCompanion(
+                jobId: jobId,
+                revision: revision,
+                ladderJson: ladderJson,
+                ladderEdited: ladderEdited,
+                overridesJson: overridesJson,
+                intelId: intelId,
+                questionsId: questionsId,
+                contextId: contextId,
+                preparationState: preparationState,
+                preparationError: preparationError,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String jobId,
+                Value<int> revision = const Value.absent(),
+                Value<String> ladderJson = const Value.absent(),
+                Value<bool> ladderEdited = const Value.absent(),
+                Value<String> overridesJson = const Value.absent(),
+                Value<String?> intelId = const Value.absent(),
+                Value<String?> questionsId = const Value.absent(),
+                Value<String?> contextId = const Value.absent(),
+                Value<String> preparationState = const Value.absent(),
+                Value<String?> preparationError = const Value.absent(),
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => InterviewWorkspacesCompanion.insert(
+                jobId: jobId,
+                revision: revision,
+                ladderJson: ladderJson,
+                ladderEdited: ladderEdited,
+                overridesJson: overridesJson,
+                intelId: intelId,
+                questionsId: questionsId,
+                contextId: contextId,
+                preparationState: preparationState,
+                preparationError: preparationError,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$InterviewWorkspacesTable, InterviewWorkspace>(
+                    table,
+                  ),
+                  $$InterviewWorkspacesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({jobId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (jobId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.jobId,
+                                referencedTable:
+                                    $$InterviewWorkspacesTableReferences
+                                        ._jobIdTable(db),
+                                referencedColumn:
+                                    $$InterviewWorkspacesTableReferences
+                                        ._jobIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$InterviewWorkspacesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$CareerShopperDatabase,
+      $InterviewWorkspacesTable,
+      InterviewWorkspace,
+      $$InterviewWorkspacesTableFilterComposer,
+      $$InterviewWorkspacesTableOrderingComposer,
+      $$InterviewWorkspacesTableAnnotationComposer,
+      $$InterviewWorkspacesTableCreateCompanionBuilder,
+      $$InterviewWorkspacesTableUpdateCompanionBuilder,
+      (InterviewWorkspace, $$InterviewWorkspacesTableReferences),
+      InterviewWorkspace,
+      PrefetchHooks Function({bool jobId})
+    >;
+typedef $$InterviewRevisionsTableCreateCompanionBuilder =
+    InterviewRevisionsCompanion Function({
+      required String id,
+      required String jobId,
+      required String kind,
+      required String payloadJson,
+      required DateTime createdAt,
+      Value<int> rowid,
+    });
+typedef $$InterviewRevisionsTableUpdateCompanionBuilder =
+    InterviewRevisionsCompanion Function({
+      Value<String> id,
+      Value<String> jobId,
+      Value<String> kind,
+      Value<String> payloadJson,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+
+final class $$InterviewRevisionsTableReferences
+    extends
+        BaseReferences<
+          _$CareerShopperDatabase,
+          $InterviewRevisionsTable,
+          InterviewRevision
+        > {
+  $$InterviewRevisionsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $JobsTable _jobIdTable(_$CareerShopperDatabase db) =>
+      db.jobs.createAlias('interview_revisions__job_id__jobs__id');
+
+  $$JobsTableProcessedTableManager get jobId {
+    final $_column = $_itemColumn<String>('job_id')!;
+
+    final manager = $$JobsTableTableManager(
+      $_db,
+      $_db.jobs,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_jobIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$InterviewRevisionsTableFilterComposer
+    extends Composer<_$CareerShopperDatabase, $InterviewRevisionsTable> {
+  $$InterviewRevisionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$JobsTableFilterComposer get jobId {
+    final $$JobsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.jobId,
+      referencedTable: $db.jobs,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$JobsTableFilterComposer(
+            $db: $db,
+            $table: $db.jobs,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$InterviewRevisionsTableOrderingComposer
+    extends Composer<_$CareerShopperDatabase, $InterviewRevisionsTable> {
+  $$InterviewRevisionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$JobsTableOrderingComposer get jobId {
+    final $$JobsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.jobId,
+      referencedTable: $db.jobs,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$JobsTableOrderingComposer(
+            $db: $db,
+            $table: $db.jobs,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$InterviewRevisionsTableAnnotationComposer
+    extends Composer<_$CareerShopperDatabase, $InterviewRevisionsTable> {
+  $$InterviewRevisionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$JobsTableAnnotationComposer get jobId {
+    final $$JobsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.jobId,
+      referencedTable: $db.jobs,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$JobsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.jobs,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$InterviewRevisionsTableTableManager
+    extends
+        RootTableManager<
+          _$CareerShopperDatabase,
+          $InterviewRevisionsTable,
+          InterviewRevision,
+          $$InterviewRevisionsTableFilterComposer,
+          $$InterviewRevisionsTableOrderingComposer,
+          $$InterviewRevisionsTableAnnotationComposer,
+          $$InterviewRevisionsTableCreateCompanionBuilder,
+          $$InterviewRevisionsTableUpdateCompanionBuilder,
+          (InterviewRevision, $$InterviewRevisionsTableReferences),
+          InterviewRevision,
+          PrefetchHooks Function({bool jobId})
+        > {
+  $$InterviewRevisionsTableTableManager(
+    _$CareerShopperDatabase db,
+    $InterviewRevisionsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$InterviewRevisionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$InterviewRevisionsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$InterviewRevisionsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> jobId = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<String> payloadJson = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => InterviewRevisionsCompanion(
+                id: id,
+                jobId: jobId,
+                kind: kind,
+                payloadJson: payloadJson,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String jobId,
+                required String kind,
+                required String payloadJson,
+                required DateTime createdAt,
+                Value<int> rowid = const Value.absent(),
+              }) => InterviewRevisionsCompanion.insert(
+                id: id,
+                jobId: jobId,
+                kind: kind,
+                payloadJson: payloadJson,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$InterviewRevisionsTable, InterviewRevision>(
+                    table,
+                  ),
+                  $$InterviewRevisionsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({jobId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (jobId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.jobId,
+                                referencedTable:
+                                    $$InterviewRevisionsTableReferences
+                                        ._jobIdTable(db),
+                                referencedColumn:
+                                    $$InterviewRevisionsTableReferences
+                                        ._jobIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$InterviewRevisionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$CareerShopperDatabase,
+      $InterviewRevisionsTable,
+      InterviewRevision,
+      $$InterviewRevisionsTableFilterComposer,
+      $$InterviewRevisionsTableOrderingComposer,
+      $$InterviewRevisionsTableAnnotationComposer,
+      $$InterviewRevisionsTableCreateCompanionBuilder,
+      $$InterviewRevisionsTableUpdateCompanionBuilder,
+      (InterviewRevision, $$InterviewRevisionsTableReferences),
+      InterviewRevision,
+      PrefetchHooks Function({bool jobId})
+    >;
+typedef $$InterviewPracticesTableCreateCompanionBuilder =
+    InterviewPracticesCompanion Function({
+      required String id,
+      required String jobId,
+      required String stageId,
+      required String requestId,
+      required String requestJson,
+      required String snapshotJson,
+      Value<String> status,
+      Value<int> revision,
+      Value<String> debrief,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$InterviewPracticesTableUpdateCompanionBuilder =
+    InterviewPracticesCompanion Function({
+      Value<String> id,
+      Value<String> jobId,
+      Value<String> stageId,
+      Value<String> requestId,
+      Value<String> requestJson,
+      Value<String> snapshotJson,
+      Value<String> status,
+      Value<int> revision,
+      Value<String> debrief,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+final class $$InterviewPracticesTableReferences
+    extends
+        BaseReferences<
+          _$CareerShopperDatabase,
+          $InterviewPracticesTable,
+          InterviewPractice
+        > {
+  $$InterviewPracticesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $JobsTable _jobIdTable(_$CareerShopperDatabase db) =>
+      db.jobs.createAlias('interview_practices__job_id__jobs__id');
+
+  $$JobsTableProcessedTableManager get jobId {
+    final $_column = $_itemColumn<String>('job_id')!;
+
+    final manager = $$JobsTableTableManager(
+      $_db,
+      $_db.jobs,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_jobIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static MultiTypedResultKey<$InterviewExchangesTable, List<InterviewExchange>>
+  _interviewExchangesRefsTable(_$CareerShopperDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.interviewExchanges,
+        aliasName: 'interview_practices__id__interview_exchanges__practice_id',
+      );
+
+  $$InterviewExchangesTableProcessedTableManager get interviewExchangesRefs {
+    final manager = $$InterviewExchangesTableTableManager(
+      $_db,
+      $_db.interviewExchanges,
+    ).filter((f) => f.practiceId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _interviewExchangesRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$InterviewPracticesTableFilterComposer
+    extends Composer<_$CareerShopperDatabase, $InterviewPracticesTable> {
+  $$InterviewPracticesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get stageId => $composableBuilder(
+    column: $table.stageId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get requestId => $composableBuilder(
+    column: $table.requestId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get requestJson => $composableBuilder(
+    column: $table.requestJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get snapshotJson => $composableBuilder(
+    column: $table.snapshotJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get debrief => $composableBuilder(
+    column: $table.debrief,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$JobsTableFilterComposer get jobId {
+    final $$JobsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.jobId,
+      referencedTable: $db.jobs,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$JobsTableFilterComposer(
+            $db: $db,
+            $table: $db.jobs,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<bool> interviewExchangesRefs(
+    Expression<bool> Function($$InterviewExchangesTableFilterComposer f) f,
+  ) {
+    final $$InterviewExchangesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.interviewExchanges,
+      getReferencedColumn: (t) => t.practiceId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$InterviewExchangesTableFilterComposer(
+            $db: $db,
+            $table: $db.interviewExchanges,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$InterviewPracticesTableOrderingComposer
+    extends Composer<_$CareerShopperDatabase, $InterviewPracticesTable> {
+  $$InterviewPracticesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get stageId => $composableBuilder(
+    column: $table.stageId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get requestId => $composableBuilder(
+    column: $table.requestId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get requestJson => $composableBuilder(
+    column: $table.requestJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get snapshotJson => $composableBuilder(
+    column: $table.snapshotJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get debrief => $composableBuilder(
+    column: $table.debrief,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$JobsTableOrderingComposer get jobId {
+    final $$JobsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.jobId,
+      referencedTable: $db.jobs,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$JobsTableOrderingComposer(
+            $db: $db,
+            $table: $db.jobs,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$InterviewPracticesTableAnnotationComposer
+    extends Composer<_$CareerShopperDatabase, $InterviewPracticesTable> {
+  $$InterviewPracticesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get stageId =>
+      $composableBuilder(column: $table.stageId, builder: (column) => column);
+
+  GeneratedColumn<String> get requestId =>
+      $composableBuilder(column: $table.requestId, builder: (column) => column);
+
+  GeneratedColumn<String> get requestJson => $composableBuilder(
+    column: $table.requestJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get snapshotJson => $composableBuilder(
+    column: $table.snapshotJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<int> get revision =>
+      $composableBuilder(column: $table.revision, builder: (column) => column);
+
+  GeneratedColumn<String> get debrief =>
+      $composableBuilder(column: $table.debrief, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$JobsTableAnnotationComposer get jobId {
+    final $$JobsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.jobId,
+      referencedTable: $db.jobs,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$JobsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.jobs,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<T> interviewExchangesRefs<T extends Object>(
+    Expression<T> Function($$InterviewExchangesTableAnnotationComposer a) f,
+  ) {
+    final $$InterviewExchangesTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.interviewExchanges,
+          getReferencedColumn: (t) => t.practiceId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$InterviewExchangesTableAnnotationComposer(
+                $db: $db,
+                $table: $db.interviewExchanges,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+}
+
+class $$InterviewPracticesTableTableManager
+    extends
+        RootTableManager<
+          _$CareerShopperDatabase,
+          $InterviewPracticesTable,
+          InterviewPractice,
+          $$InterviewPracticesTableFilterComposer,
+          $$InterviewPracticesTableOrderingComposer,
+          $$InterviewPracticesTableAnnotationComposer,
+          $$InterviewPracticesTableCreateCompanionBuilder,
+          $$InterviewPracticesTableUpdateCompanionBuilder,
+          (InterviewPractice, $$InterviewPracticesTableReferences),
+          InterviewPractice,
+          PrefetchHooks Function({bool jobId, bool interviewExchangesRefs})
+        > {
+  $$InterviewPracticesTableTableManager(
+    _$CareerShopperDatabase db,
+    $InterviewPracticesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$InterviewPracticesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$InterviewPracticesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$InterviewPracticesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> jobId = const Value.absent(),
+                Value<String> stageId = const Value.absent(),
+                Value<String> requestId = const Value.absent(),
+                Value<String> requestJson = const Value.absent(),
+                Value<String> snapshotJson = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<int> revision = const Value.absent(),
+                Value<String> debrief = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => InterviewPracticesCompanion(
+                id: id,
+                jobId: jobId,
+                stageId: stageId,
+                requestId: requestId,
+                requestJson: requestJson,
+                snapshotJson: snapshotJson,
+                status: status,
+                revision: revision,
+                debrief: debrief,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String jobId,
+                required String stageId,
+                required String requestId,
+                required String requestJson,
+                required String snapshotJson,
+                Value<String> status = const Value.absent(),
+                Value<int> revision = const Value.absent(),
+                Value<String> debrief = const Value.absent(),
+                required DateTime createdAt,
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => InterviewPracticesCompanion.insert(
+                id: id,
+                jobId: jobId,
+                stageId: stageId,
+                requestId: requestId,
+                requestJson: requestJson,
+                snapshotJson: snapshotJson,
+                status: status,
+                revision: revision,
+                debrief: debrief,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$InterviewPracticesTable, InterviewPractice>(
+                    table,
+                  ),
+                  $$InterviewPracticesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback:
+              ({jobId = false, interviewExchangesRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (interviewExchangesRefs) db.interviewExchanges,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (jobId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.jobId,
+                                    referencedTable:
+                                        $$InterviewPracticesTableReferences
+                                            ._jobIdTable(db),
+                                    referencedColumn:
+                                        $$InterviewPracticesTableReferences
+                                            ._jobIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
+
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (interviewExchangesRefs)
+                        await $_getPrefetchedData<
+                          InterviewPractice,
+                          $InterviewPracticesTable,
+                          InterviewExchange
+                        >(
+                          currentTable: table,
+                          referencedTable: $$InterviewPracticesTableReferences
+                              ._interviewExchangesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$InterviewPracticesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).interviewExchangesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.practiceId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$InterviewPracticesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$CareerShopperDatabase,
+      $InterviewPracticesTable,
+      InterviewPractice,
+      $$InterviewPracticesTableFilterComposer,
+      $$InterviewPracticesTableOrderingComposer,
+      $$InterviewPracticesTableAnnotationComposer,
+      $$InterviewPracticesTableCreateCompanionBuilder,
+      $$InterviewPracticesTableUpdateCompanionBuilder,
+      (InterviewPractice, $$InterviewPracticesTableReferences),
+      InterviewPractice,
+      PrefetchHooks Function({bool jobId, bool interviewExchangesRefs})
+    >;
+typedef $$InterviewExchangesTableCreateCompanionBuilder =
+    InterviewExchangesCompanion Function({
+      required String practiceId,
+      required String exchangeId,
+      required int sequence,
+      Value<int> revision,
+      required String payloadJson,
+      Value<String> historyJson,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$InterviewExchangesTableUpdateCompanionBuilder =
+    InterviewExchangesCompanion Function({
+      Value<String> practiceId,
+      Value<String> exchangeId,
+      Value<int> sequence,
+      Value<int> revision,
+      Value<String> payloadJson,
+      Value<String> historyJson,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+final class $$InterviewExchangesTableReferences
+    extends
+        BaseReferences<
+          _$CareerShopperDatabase,
+          $InterviewExchangesTable,
+          InterviewExchange
+        > {
+  $$InterviewExchangesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $InterviewPracticesTable _practiceIdTable(
+    _$CareerShopperDatabase db,
+  ) => db.interviewPractices.createAlias(
+    'interview_exchanges__practice_id__interview_practices__id',
+  );
+
+  $$InterviewPracticesTableProcessedTableManager get practiceId {
+    final $_column = $_itemColumn<String>('practice_id')!;
+
+    final manager = $$InterviewPracticesTableTableManager(
+      $_db,
+      $_db.interviewPractices,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_practiceIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$InterviewExchangesTableFilterComposer
+    extends Composer<_$CareerShopperDatabase, $InterviewExchangesTable> {
+  $$InterviewExchangesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get exchangeId => $composableBuilder(
+    column: $table.exchangeId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sequence => $composableBuilder(
+    column: $table.sequence,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get historyJson => $composableBuilder(
+    column: $table.historyJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$InterviewPracticesTableFilterComposer get practiceId {
+    final $$InterviewPracticesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.practiceId,
+      referencedTable: $db.interviewPractices,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$InterviewPracticesTableFilterComposer(
+            $db: $db,
+            $table: $db.interviewPractices,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$InterviewExchangesTableOrderingComposer
+    extends Composer<_$CareerShopperDatabase, $InterviewExchangesTable> {
+  $$InterviewExchangesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get exchangeId => $composableBuilder(
+    column: $table.exchangeId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sequence => $composableBuilder(
+    column: $table.sequence,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get historyJson => $composableBuilder(
+    column: $table.historyJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$InterviewPracticesTableOrderingComposer get practiceId {
+    final $$InterviewPracticesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.practiceId,
+      referencedTable: $db.interviewPractices,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$InterviewPracticesTableOrderingComposer(
+            $db: $db,
+            $table: $db.interviewPractices,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$InterviewExchangesTableAnnotationComposer
+    extends Composer<_$CareerShopperDatabase, $InterviewExchangesTable> {
+  $$InterviewExchangesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get exchangeId => $composableBuilder(
+    column: $table.exchangeId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get sequence =>
+      $composableBuilder(column: $table.sequence, builder: (column) => column);
+
+  GeneratedColumn<int> get revision =>
+      $composableBuilder(column: $table.revision, builder: (column) => column);
+
+  GeneratedColumn<String> get payloadJson => $composableBuilder(
+    column: $table.payloadJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get historyJson => $composableBuilder(
+    column: $table.historyJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$InterviewPracticesTableAnnotationComposer get practiceId {
+    final $$InterviewPracticesTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.practiceId,
+          referencedTable: $db.interviewPractices,
+          getReferencedColumn: (t) => t.id,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$InterviewPracticesTableAnnotationComposer(
+                $db: $db,
+                $table: $db.interviewPractices,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return composer;
+  }
+}
+
+class $$InterviewExchangesTableTableManager
+    extends
+        RootTableManager<
+          _$CareerShopperDatabase,
+          $InterviewExchangesTable,
+          InterviewExchange,
+          $$InterviewExchangesTableFilterComposer,
+          $$InterviewExchangesTableOrderingComposer,
+          $$InterviewExchangesTableAnnotationComposer,
+          $$InterviewExchangesTableCreateCompanionBuilder,
+          $$InterviewExchangesTableUpdateCompanionBuilder,
+          (InterviewExchange, $$InterviewExchangesTableReferences),
+          InterviewExchange,
+          PrefetchHooks Function({bool practiceId})
+        > {
+  $$InterviewExchangesTableTableManager(
+    _$CareerShopperDatabase db,
+    $InterviewExchangesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$InterviewExchangesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$InterviewExchangesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$InterviewExchangesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> practiceId = const Value.absent(),
+                Value<String> exchangeId = const Value.absent(),
+                Value<int> sequence = const Value.absent(),
+                Value<int> revision = const Value.absent(),
+                Value<String> payloadJson = const Value.absent(),
+                Value<String> historyJson = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => InterviewExchangesCompanion(
+                practiceId: practiceId,
+                exchangeId: exchangeId,
+                sequence: sequence,
+                revision: revision,
+                payloadJson: payloadJson,
+                historyJson: historyJson,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String practiceId,
+                required String exchangeId,
+                required int sequence,
+                Value<int> revision = const Value.absent(),
+                required String payloadJson,
+                Value<String> historyJson = const Value.absent(),
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => InterviewExchangesCompanion.insert(
+                practiceId: practiceId,
+                exchangeId: exchangeId,
+                sequence: sequence,
+                revision: revision,
+                payloadJson: payloadJson,
+                historyJson: historyJson,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$InterviewExchangesTable, InterviewExchange>(
+                    table,
+                  ),
+                  $$InterviewExchangesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({practiceId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (practiceId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.practiceId,
+                                referencedTable:
+                                    $$InterviewExchangesTableReferences
+                                        ._practiceIdTable(db),
+                                referencedColumn:
+                                    $$InterviewExchangesTableReferences
+                                        ._practiceIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$InterviewExchangesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$CareerShopperDatabase,
+      $InterviewExchangesTable,
+      InterviewExchange,
+      $$InterviewExchangesTableFilterComposer,
+      $$InterviewExchangesTableOrderingComposer,
+      $$InterviewExchangesTableAnnotationComposer,
+      $$InterviewExchangesTableCreateCompanionBuilder,
+      $$InterviewExchangesTableUpdateCompanionBuilder,
+      (InterviewExchange, $$InterviewExchangesTableReferences),
+      InterviewExchange,
+      PrefetchHooks Function({bool practiceId})
+    >;
+typedef $$InterviewSettingsTableCreateCompanionBuilder =
+    InterviewSettingsCompanion Function({
+      Value<int> id,
+      Value<bool> autoPrepare,
+      Value<String?> agentId,
+    });
+typedef $$InterviewSettingsTableUpdateCompanionBuilder =
+    InterviewSettingsCompanion Function({
+      Value<int> id,
+      Value<bool> autoPrepare,
+      Value<String?> agentId,
+    });
+
+class $$InterviewSettingsTableFilterComposer
+    extends Composer<_$CareerShopperDatabase, $InterviewSettingsTable> {
+  $$InterviewSettingsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get autoPrepare => $composableBuilder(
+    column: $table.autoPrepare,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get agentId => $composableBuilder(
+    column: $table.agentId,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$InterviewSettingsTableOrderingComposer
+    extends Composer<_$CareerShopperDatabase, $InterviewSettingsTable> {
+  $$InterviewSettingsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get autoPrepare => $composableBuilder(
+    column: $table.autoPrepare,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get agentId => $composableBuilder(
+    column: $table.agentId,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$InterviewSettingsTableAnnotationComposer
+    extends Composer<_$CareerShopperDatabase, $InterviewSettingsTable> {
+  $$InterviewSettingsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<bool> get autoPrepare => $composableBuilder(
+    column: $table.autoPrepare,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get agentId =>
+      $composableBuilder(column: $table.agentId, builder: (column) => column);
+}
+
+class $$InterviewSettingsTableTableManager
+    extends
+        RootTableManager<
+          _$CareerShopperDatabase,
+          $InterviewSettingsTable,
+          InterviewSetting,
+          $$InterviewSettingsTableFilterComposer,
+          $$InterviewSettingsTableOrderingComposer,
+          $$InterviewSettingsTableAnnotationComposer,
+          $$InterviewSettingsTableCreateCompanionBuilder,
+          $$InterviewSettingsTableUpdateCompanionBuilder,
+          (
+            InterviewSetting,
+            BaseReferences<
+              _$CareerShopperDatabase,
+              $InterviewSettingsTable,
+              InterviewSetting
+            >,
+          ),
+          InterviewSetting,
+          PrefetchHooks Function()
+        > {
+  $$InterviewSettingsTableTableManager(
+    _$CareerShopperDatabase db,
+    $InterviewSettingsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$InterviewSettingsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$InterviewSettingsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$InterviewSettingsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<bool> autoPrepare = const Value.absent(),
+                Value<String?> agentId = const Value.absent(),
+              }) => InterviewSettingsCompanion(
+                id: id,
+                autoPrepare: autoPrepare,
+                agentId: agentId,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<bool> autoPrepare = const Value.absent(),
+                Value<String?> agentId = const Value.absent(),
+              }) => InterviewSettingsCompanion.insert(
+                id: id,
+                autoPrepare: autoPrepare,
+                agentId: agentId,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$InterviewSettingsTable, InterviewSetting>(table),
+                  BaseReferences<
+                    _$CareerShopperDatabase,
+                    $InterviewSettingsTable,
+                    InterviewSetting
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$InterviewSettingsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$CareerShopperDatabase,
+      $InterviewSettingsTable,
+      InterviewSetting,
+      $$InterviewSettingsTableFilterComposer,
+      $$InterviewSettingsTableOrderingComposer,
+      $$InterviewSettingsTableAnnotationComposer,
+      $$InterviewSettingsTableCreateCompanionBuilder,
+      $$InterviewSettingsTableUpdateCompanionBuilder,
+      (
+        InterviewSetting,
+        BaseReferences<
+          _$CareerShopperDatabase,
+          $InterviewSettingsTable,
+          InterviewSetting
+        >,
+      ),
+      InterviewSetting,
+      PrefetchHooks Function()
+    >;
 
 class $CareerShopperDatabaseManager {
   final _$CareerShopperDatabase _db;
@@ -31048,4 +35727,14 @@ class $CareerShopperDatabaseManager {
       $$ArtifactsTableTableManager(_db, _db.artifacts);
   $$AuditEventsTableTableManager get auditEvents =>
       $$AuditEventsTableTableManager(_db, _db.auditEvents);
+  $$InterviewWorkspacesTableTableManager get interviewWorkspaces =>
+      $$InterviewWorkspacesTableTableManager(_db, _db.interviewWorkspaces);
+  $$InterviewRevisionsTableTableManager get interviewRevisions =>
+      $$InterviewRevisionsTableTableManager(_db, _db.interviewRevisions);
+  $$InterviewPracticesTableTableManager get interviewPractices =>
+      $$InterviewPracticesTableTableManager(_db, _db.interviewPractices);
+  $$InterviewExchangesTableTableManager get interviewExchanges =>
+      $$InterviewExchangesTableTableManager(_db, _db.interviewExchanges);
+  $$InterviewSettingsTableTableManager get interviewSettings =>
+      $$InterviewSettingsTableTableManager(_db, _db.interviewSettings);
 }

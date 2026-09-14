@@ -53,6 +53,10 @@ class AiActivityPage extends StatefulWidget {
 
 class _AiActivityPageState extends State<AiActivityPage> {
   String? _selectedId;
+  int _limit = 50;
+  late var _conversations = widget.harnesses.watchConversations(
+    limit: _limit + 1,
+  );
 
   Future<void> _newChat() async {
     final message = await _messageDialog(
@@ -92,7 +96,7 @@ class _AiActivityPageState extends State<AiActivityPage> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<AiConversation>>(
-      stream: widget.harnesses.watchConversations(),
+      stream: _conversations,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return Center(
@@ -102,7 +106,8 @@ class _AiActivityPageState extends State<AiActivityPage> {
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
-        final conversations = snapshot.data!;
+        final hasMore = snapshot.data!.length > _limit;
+        final conversations = snapshot.data!.take(_limit).toList();
         final selected = conversations
             .where((item) => item.id == _selectedId)
             .firstOrNull;
@@ -131,8 +136,18 @@ class _AiActivityPageState extends State<AiActivityPage> {
                             ),
                           )
                         : ListView.builder(
-                            itemCount: conversations.length,
+                            itemCount: conversations.length + (hasMore ? 1 : 0),
                             itemBuilder: (context, index) {
+                              if (index == conversations.length) {
+                                return TextButton(
+                                  onPressed: () => setState(() {
+                                    _limit += 50;
+                                    _conversations = widget.harnesses
+                                        .watchConversations(limit: _limit + 1);
+                                  }),
+                                  child: const Text('Load more conversations'),
+                                );
+                              }
                               final conversation = conversations[index];
                               return ListTile(
                                 selected: conversation.id == current?.id,

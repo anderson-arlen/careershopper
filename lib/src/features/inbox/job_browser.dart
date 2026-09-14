@@ -1,3 +1,5 @@
+import '../interviews/interviews_panel.dart';
+import '../../storage/interview_repository.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -22,23 +24,38 @@ class JobBrowser extends StatefulWidget {
     required this.emptyMessage,
     required this.jobs,
     this.refreshJobs,
+    this.pageJobs,
+    this.viewSelector,
+    this.openInterviews = false,
     required this.repository,
     required this.onAddListing,
     required this.onRunAi,
     required this.harnesses,
+    this.interviews,
+    this.onPrepareInterviews,
     required this.onQueueApplication,
     super.key,
   });
 
+  final Widget? viewSelector;
+  final bool openInterviews;
   final String title;
   final String emptyTitle;
   final String emptyMessage;
   final Stream<List<InboxJob>> jobs;
   final Future<List<InboxJob>> Function()? refreshJobs;
+  final Stream<List<InboxJob>> Function(
+    int limit,
+    String search,
+    JobListFilters filters,
+  )?
+  pageJobs;
   final JobStore repository;
   final VoidCallback onAddListing;
   final Future<void> Function(InboxJob job) onRunAi;
   final AiHarnessStore harnesses;
+  final InterviewRepository? interviews;
+  final Future<void> Function(String)? onPrepareInterviews;
   final Future<void> Function(InboxJob job) onQueueApplication;
 
   @override
@@ -46,6 +63,10 @@ class JobBrowser extends StatefulWidget {
 }
 
 class _JobBrowserState extends State<JobBrowser> {
+  int _pageLimit = 50;
+  Stream<List<InboxJob>>? _pageStream;
+  Timer? _searchDebounce;
+  JobListFilters _filters = const JobListFilters();
   final _search = TextEditingController();
   String? _selectedJobId;
   int _selectedIndex = 0;
@@ -55,6 +76,19 @@ class _JobBrowserState extends State<JobBrowser> {
   int _activityVersion = 0;
   bool _refreshing = false, _protected = false;
   static const _idleInterval = Duration(minutes: 3);
+
+  Stream<List<InboxJob>> get _currentPage => _pageStream ??=
+      widget.pageJobs?.call(_pageLimit + 1, _search.text, _filters) ??
+      widget.jobs;
+  Future<List<InboxJob>> _readPage() => widget.pageJobs != null
+      ? widget.pageJobs!(_pageLimit + 1, _search.text, _filters).first
+      : widget.refreshJobs!();
+  void _resetPage() {
+    _pageLimit = 50;
+    _pageStream = null;
+    _visibleJobs = null;
+    _selectedIndex = 0;
+  }
 
   @override
   void didChangeDependencies() {
@@ -89,7 +123,7 @@ class _JobBrowserState extends State<JobBrowser> {
     final version = _activityVersion;
     setState(() => _refreshing = true);
     try {
-      final jobs = await widget.refreshJobs!();
+      final jobs = await _readPage();
       if (mounted && !_protected && (manual || version == _activityVersion)) {
         setState(() => _visibleJobs = jobs);
       }
@@ -106,7 +140,7 @@ class _JobBrowserState extends State<JobBrowser> {
 
   Future<void> _afterAction(String id) async {
     if (widget.refreshJobs == null) return;
-    final latest = await widget.refreshJobs!();
+    final latest = await _readPage();
     if (!mounted || _visibleJobs == null) return;
     final updated = latest.where((job) => job.id == id).firstOrNull;
     setState(() {
@@ -118,8 +152,108 @@ class _JobBrowserState extends State<JobBrowser> {
     });
   }
 
+  Future<void> _editFilters() async {
+    var stage = _filters.stage;
+    var outcome = _filters.outcome;
+    var review = _filters.review;
+    var availability = _filters.availability;
+    final result = await showDialog<JobListFilters>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, update) {
+          Widget field<T extends Enum>(
+            String label,
+            List<T> values,
+            T? value,
+            void Function(T?) set,
+          ) => DropdownButtonFormField<String>(
+            key: ValueKey('$label-${value?.name}'),
+            initialValue: value?.name ?? '',
+            decoration: InputDecoration(labelText: label),
+            items: [
+              const DropdownMenuItem(value: '', child: Text('Any')),
+              for (final item in values)
+                DropdownMenuItem(
+                  value: item.name,
+                  child: Text(item.persistedName.replaceAll('_', ' ')),
+                ),
+            ],
+            onChanged: (name) => update(
+              () => set(values.where((v) => v.name == name).firstOrNull),
+            ),
+          );
+          return AlertDialog(
+            title: const Text('Filter jobs'),
+            content: SizedBox(
+              width: 360,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  field(
+                    'Application stage',
+                    ApplicationStatus.values,
+                    stage,
+                    (value) => stage = value,
+                  ),
+                  field(
+                    'Application outcome',
+                    ApplicationOutcome.values,
+                    outcome,
+                    (value) => outcome = value,
+                  ),
+                  field(
+                    'Review',
+                    ReviewState.values,
+                    review,
+                    (value) => review = value,
+                  ),
+                  field(
+                    'Availability',
+                    JobAvailability.values,
+                    availability,
+                    (value) => availability = value,
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, const JobListFilters()),
+                child: const Text('Clear filters'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(
+                  context,
+                  JobListFilters(
+                    stage: stage,
+                    outcome: outcome,
+                    review: review,
+                    availability: availability,
+                  ),
+                ),
+                child: const Text('Apply filters'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (mounted && result != null) {
+      setState(() {
+        _filters = result;
+        _resetPage();
+        _selectedIndex = 0;
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _search.dispose();
     _refreshTimer?.cancel();
     _activity?.removeListener(_recordActivity);
@@ -129,22 +263,29 @@ class _JobBrowserState extends State<JobBrowser> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<InboxJob>>(
-      stream: widget.jobs,
+      stream: _currentPage,
       builder: (context, snapshot) {
         if (snapshot.hasError && _visibleJobs == null) {
           return _ErrorState(error: snapshot.error);
         }
-        if (!snapshot.hasData && _visibleJobs == null) {
+        if ((!snapshot.hasData ||
+                (widget.pageJobs != null &&
+                    snapshot.connectionState == ConnectionState.waiting)) &&
+            _visibleJobs == null) {
           return const Center(child: CircularProgressIndicator());
         }
         final availableJobs = widget.refreshJobs == null
             ? snapshot.data!
             : (_visibleJobs ??= snapshot.data!);
 
-        final jobs = searchJobsByText(
-          availableJobs,
-          _search.text,
-        ).map((match) => match.job).toList(growable: false);
+        final hasMore =
+            widget.pageJobs != null && availableJobs.length > _pageLimit;
+        final jobs = widget.pageJobs != null
+            ? availableJobs.take(_pageLimit).toList()
+            : searchJobsByText(
+                availableJobs.where(_filters.matches).toList(),
+                _search.text,
+              ).map((match) => match.job).toList(growable: false);
         final retainedIndex = jobs.indexWhere(
           (job) => job.id == _selectedJobId,
         );
@@ -159,6 +300,9 @@ class _JobBrowserState extends State<JobBrowser> {
           children: [
             _Toolbar(
               title: widget.title,
+              viewSelector: widget.viewSelector,
+              onFilters: _protected ? null : _editFilters,
+              filtersActive: _filters.isActive,
               count: jobs.length,
               onAddListing: widget.onAddListing,
               onRefresh: widget.refreshJobs == null
@@ -194,20 +338,30 @@ class _JobBrowserState extends State<JobBrowser> {
                                           ? null
                                           : () => setState(() {
                                               _search.clear();
-                                              _selectedIndex = 0;
+                                              _resetPage();
                                             }),
                                       icon: const Icon(Icons.clear),
                                     ),
                               border: const OutlineInputBorder(),
                               isDense: true,
                             ),
-                            onChanged: (_) =>
-                                setState(() => _selectedIndex = 0),
+                            onChanged: (_) {
+                              _searchDebounce?.cancel();
+                              _searchDebounce = Timer(
+                                const Duration(milliseconds: 250),
+                                () {
+                                  if (mounted) setState(_resetPage);
+                                },
+                              );
+                            },
                           ),
                         ),
                         Expanded(
                           child: _JobList(
                             jobs: jobs,
+                            interviews: widget.openInterviews
+                                ? widget.interviews
+                                : null,
                             selectedJobId: selected?.id,
                             onSelected: (id) => setState(() {
                               _selectedJobId = id;
@@ -215,6 +369,17 @@ class _JobBrowserState extends State<JobBrowser> {
                             }),
                           ),
                         ),
+                        if (hasMore)
+                          TextButton(
+                            onPressed: _protected
+                                ? null
+                                : () => setState(() {
+                                    _pageLimit += 50;
+                                    _pageStream = null;
+                                    _visibleJobs = null;
+                                  }),
+                            child: const Text('Load more jobs'),
+                          ),
                       ],
                     ),
                   ),
@@ -232,7 +397,10 @@ class _JobBrowserState extends State<JobBrowser> {
                         : _JobDetail(
                             key: ValueKey(selected.id),
                             job: selected,
+                            openInterviews: widget.openInterviews,
                             repository: widget.repository,
+                            interviews: widget.interviews,
+                            onPrepareInterviews: widget.onPrepareInterviews,
                             onRunAi: (job) async {
                               await widget.onRunAi(job);
                               await _afterAction(job.id);
@@ -266,10 +434,16 @@ class _Toolbar extends StatelessWidget {
     required this.count,
     required this.onAddListing,
     this.onRefresh,
+    this.viewSelector,
+    this.onFilters,
+    this.filtersActive = false,
     this.refreshing = false,
     this.protected = false,
   });
 
+  final Widget? viewSelector;
+  final VoidCallback? onFilters;
+  final bool filtersActive;
   final String title;
   final int count;
   final VoidCallback onAddListing;
@@ -278,45 +452,55 @@ class _Toolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 16, 20, 16),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Badge(label: Text('$count')),
-          if (onRefresh != null) ...[
-            Tooltip(
-              message: protected
-                  ? 'Save or revert document edits before refreshing'
-                  : 'Refresh inbox',
-              child: OutlinedButton.icon(
-                onPressed: refreshing || protected ? null : onRefresh,
-                icon: const Icon(Icons.refresh),
-                label: Text(refreshing ? 'Refreshing…' : 'Refresh'),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 20, 16),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-          ],
-          OutlinedButton.icon(
-            onPressed: () {},
-            icon: const Icon(Icons.tune),
-            label: const Text('Filters'),
+              const SizedBox(width: 10),
+              Badge(label: Text('$count')),
+              if (onRefresh != null) ...[
+                Tooltip(
+                  message: protected
+                      ? 'Save or revert document edits before refreshing'
+                      : 'Refresh inbox',
+                  child: OutlinedButton.icon(
+                    onPressed: refreshing || protected ? null : onRefresh,
+                    icon: const Icon(Icons.refresh),
+                    label: Text(refreshing ? 'Refreshing…' : 'Refresh'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+              OutlinedButton.icon(
+                onPressed: onFilters,
+                icon: const Icon(Icons.tune),
+                label: Text(filtersActive ? 'Filters •' : 'Filters'),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed: onAddListing,
+                icon: const Icon(Icons.add_link),
+                label: const Text('Add listing'),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          FilledButton.icon(
-            onPressed: onAddListing,
-            icon: const Icon(Icons.add_link),
-            label: const Text('Add listing'),
+        ),
+        if (viewSelector != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 20, 12),
+            child: viewSelector,
           ),
-        ],
-      ),
+      ],
     );
   }
 }
@@ -324,10 +508,12 @@ class _Toolbar extends StatelessWidget {
 class _JobList extends StatelessWidget {
   const _JobList({
     required this.jobs,
+    this.interviews,
     required this.selectedJobId,
     required this.onSelected,
   });
 
+  final InterviewRepository? interviews;
   final List<InboxJob> jobs;
   final String? selectedJobId;
   final ValueChanged<String> onSelected;
@@ -387,6 +573,43 @@ class _JobList extends StatelessWidget {
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ],
+                        if (interviews != null)
+                          FutureBuilder<Map<String, Object?>>(
+                            future: interviews!.summary(job.id),
+                            builder: (context, snapshot) {
+                              if (!snapshot.hasData) {
+                                return const SizedBox.shrink();
+                              }
+                              final data = snapshot.data!;
+                              final stages = (data['ladder'] as List)
+                                  .cast<Map>();
+                              final next = stages
+                                  .where(
+                                    (s) =>
+                                        s['archived'] != true &&
+                                        ![
+                                          'completed',
+                                          'skipped',
+                                          'cancelled',
+                                        ].contains(s['status']),
+                                  )
+                                  .firstOrNull;
+                              final scheduled = DateTime.tryParse(
+                                '${next?['scheduled_at']}',
+                              )?.toLocal();
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(
+                                  [
+                                    if (next != null) 'Next: ${next['name']}',
+                                    if (scheduled != null)
+                                      '${MaterialLocalizations.of(context).formatMediumDate(scheduled)} ${TimeOfDay.fromDateTime(scheduled).format(context)}',
+                                    'Preparation: ${data['preparation_state']}',
+                                  ].join('\n'),
+                                ),
+                              );
+                            },
+                          ),
                         const SizedBox(height: 8),
                         Wrap(
                           spacing: 6,
@@ -690,17 +913,23 @@ class _JobDetail extends StatefulWidget {
     required this.repository,
     required this.onRunAi,
     required this.harnesses,
+    this.interviews,
+    this.onPrepareInterviews,
+    this.openInterviews = false,
     required this.onQueueApplication,
     required this.onChanged,
     required this.onProtectedChanged,
   });
 
+  final bool openInterviews;
   final InboxJob job;
   final Future<void> Function() onChanged;
   final ValueChanged<bool> onProtectedChanged;
   final JobStore repository;
   final Future<void> Function(InboxJob job) onRunAi;
   final AiHarnessStore harnesses;
+  final InterviewRepository? interviews;
+  final Future<void> Function(String)? onPrepareInterviews;
   final Future<void> Function(InboxJob job) onQueueApplication;
 
   @override
@@ -997,7 +1226,20 @@ class _JobDetailState extends State<_JobDetail> {
                 ),
                 const SizedBox(height: 20),
                 _JobDetailTabs(
+                  initialIndex: widget.openInterviews ? 2 : 0,
                   key: _tabs,
+                  interviews: widget.interviews == null
+                      ? const Text('Interview workspace is unavailable.')
+                      : InterviewsPanel(
+                          key: ValueKey('interviews-${job.id}'),
+                          jobId: job.id,
+                          jobTitle: job.title,
+                          repository: widget.interviews!,
+                          harnesses: harnesses,
+                          onPrepare: widget.onPrepareInterviews == null
+                              ? null
+                              : () => widget.onPrepareInterviews!(job.id),
+                        ),
                   documents: job.reviewState == ReviewState.approved
                       ? ApplicationMaterialsPanel(
                           key: ValueKey('materials-${job.id}'),
@@ -1069,18 +1311,26 @@ class _JobDetailState extends State<_JobDetail> {
 class _JobDetailTabs extends StatefulWidget {
   const _JobDetailTabs({
     super.key,
+    this.initialIndex = 0,
     required this.details,
     required this.documents,
+    required this.interviews,
   });
+  final int initialIndex;
   final Widget details;
   final Widget documents;
+  final Widget interviews;
   @override
   State<_JobDetailTabs> createState() => _JobDetailTabsState();
 }
 
 class _JobDetailTabsState extends State<_JobDetailTabs>
     with SingleTickerProviderStateMixin {
-  late final controller = TabController(length: 2, vsync: this);
+  late final controller = TabController(
+    length: 3,
+    vsync: this,
+    initialIndex: widget.initialIndex,
+  );
   void showDocuments() => controller.animateTo(1);
 
   @override
@@ -1100,6 +1350,7 @@ class _JobDetailTabsState extends State<_JobDetailTabs>
           tabs: const [
             Tab(text: 'Job details'),
             Tab(text: 'Application documents'),
+            Tab(text: 'Interviews'),
           ],
         ),
         const SizedBox(height: 16),
@@ -1111,6 +1362,10 @@ class _JobDetailTabsState extends State<_JobDetailTabs>
               Offstage(
                 offstage: controller.index != 1,
                 child: widget.documents,
+              ),
+              Offstage(
+                offstage: controller.index != 2,
+                child: widget.interviews,
               ),
             ],
           ),

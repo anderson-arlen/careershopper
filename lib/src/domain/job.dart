@@ -199,3 +199,31 @@ class EvaluationResult {
   int get overallScore =>
       (personalFitScore * 0.60 + attainabilityScore * 0.40).round();
 }
+
+// Shared by desktop navigation/filters and MCP jobs_search.
+bool isInterviewingJob(InboxJob job) =>
+    job.applicationStatus == ApplicationStatus.interviewing &&
+    job.applicationOutcome == ApplicationOutcome.active;
+
+class JobListFilters {
+  const JobListFilters({
+    this.stage,
+    this.outcome,
+    this.review,
+    this.availability,
+  });
+  final ApplicationStatus? stage;
+  final ApplicationOutcome? outcome;
+  final ReviewState? review;
+  final JobAvailability? availability;
+  bool get isActive =>
+      stage != null ||
+      outcome != null ||
+      review != null ||
+      availability != null;
+  bool matches(InboxJob job) =>
+      (stage == null || job.applicationStatus == stage) &&
+      (outcome == null || job.applicationOutcome == outcome) &&
+      (review == null || job.reviewState == review) &&
+      (availability == null || job.availability == availability);
+}

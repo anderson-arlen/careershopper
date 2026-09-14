@@ -16,6 +16,8 @@ import '../storage/resume_content_repository.dart';
 import '../documents/resume_content.dart';
 import '../storage/application_material_repository.dart';
 import 'mcp_ui_tools.dart';
+import 'interview_tools.dart';
+import '../storage/interview_repository.dart';
 import '../storage/employer_logo_repository.dart';
 import '../storage/listing_availability_service.dart';
 
@@ -127,13 +129,19 @@ class McpServer {
       'notifications/initialized' => null,
       'ping' => <String, Object?>{},
       'tools/list' => {
-        'tools': [..._toolDefinitions, ...uiToolDefinitions]
-            .where(
-              (tool) =>
-                  Platform.environment['CAREERSHOPPER_REVIEWER'] != '1' &&
-                  (!_answerWriter || _answerReadTools.contains(tool['name'])),
-            )
-            .toList(),
+        'tools':
+            [
+                  ..._toolDefinitions,
+                  ...uiToolDefinitions,
+                  ...interviewToolDefinitions,
+                ]
+                .where(
+                  (tool) =>
+                      Platform.environment['CAREERSHOPPER_REVIEWER'] != '1' &&
+                      (!_answerWriter ||
+                          _answerReadTools.contains(tool['name'])),
+                )
+                .toList(),
       },
       'tools/call' => _callTool(params),
       'resources/list' => {
@@ -190,7 +198,38 @@ class McpServer {
         'The application writer may only read health and confirmed profile facts.',
       );
     }
-    final result = uiToolDefinitions.any((tool) => tool['name'] == name)
+    if (_workOrderId != null) {
+      final order = await (database.select(
+        database.aiWorkOrders,
+      )..where((r) => r.id.equals(_workOrderId))).getSingleOrNull();
+      if (order?.kind == 'interview_preparation') {
+        if (!{
+          'health_get',
+          'job_get',
+          'profile_get',
+          'resume_content_get',
+          'application_materials_get',
+          'interview_get',
+          'interview_revision_get',
+          'interview_questions_get',
+          'interview_preparation_submit',
+          'interview_materials_list',
+        }.contains(name)) {
+          throw const _RpcError(
+            -32602,
+            'This tool is outside interview preparation scope.',
+          );
+        }
+        await _checkInterviewScope(
+          arguments['job_id'] as String? ?? order!.jobId!,
+          _workOrderId,
+          write: false,
+        );
+      }
+    }
+    final result = interviewToolDefinitions.any((tool) => tool['name'] == name)
+        ? await _callInterviewTool(name, arguments)
+        : uiToolDefinitions.any((tool) => tool['name'] == name)
         ? await _callUiTool(name, arguments)
         : switch (name) {
             'health_get' => await _healthGet(),
@@ -240,6 +279,35 @@ class McpServer {
     };
   }
 
+  Future<void> _checkInterviewScope(
+    String jobId,
+    String orderId, {
+    required bool write,
+  }) async {
+    try {
+      await InterviewRepository(
+        database,
+      ).checkScope(jobId, orderId, write: write);
+    } on StateError catch (error) {
+      throw _RpcError(-32602, error.message);
+    }
+  }
+
+  Future<Map<String, Object?>> _callInterviewTool(
+    String name,
+    Map<String, Object?> args,
+  ) async {
+    try {
+      return await InterviewTools(
+        InterviewRepository(database),
+      ).call(name, args, workOrderId: _workOrderId);
+    } on FormatException catch (e) {
+      throw _RpcError(-32602, e.message);
+    } on StateError catch (e) {
+      throw _RpcError(-32602, e.message);
+    }
+  }
+
   Future<Map<String, Object?>> _callUiTool(
     String name,
     Map<String, Object?> arguments,
@@ -265,6 +333,20 @@ class McpServer {
         -32002,
         'Resource unavailable to the application writer.',
       );
+    }
+    if (_workOrderId != null) {
+      final order = await (database.select(
+        database.aiWorkOrders,
+      )..where((r) => r.id.equals(_workOrderId))).getSingleOrNull();
+      if (order?.kind == 'interview_preparation') {
+        await _checkInterviewScope(
+          uri.startsWith('careershopper://jobs/')
+              ? uri.substring('careershopper://jobs/'.length)
+              : order!.jobId!,
+          _workOrderId,
+          write: false,
+        );
+      }
     }
     final Object value;
     if (uri == 'careershopper://profile/current') {
@@ -300,8 +382,11 @@ class McpServer {
   ) async {
     final query = (arguments['query'] as String?) ?? '';
     final view = arguments['view'] ?? 'all';
-    if (view != 'all' && view != 'inbox') {
-      throw const _RpcError(-32602, 'view must be all or inbox.');
+    if (!['all', 'inbox', 'interviewing'].contains(view)) {
+      throw const _RpcError(
+        -32602,
+        'view must be all, inbox, or interviewing.',
+      );
     }
     final limit = _boundedInt(
       arguments['limit'],
@@ -309,9 +394,38 @@ class McpServer {
       min: 1,
       max: 100,
     );
-    final jobs =
-        await (view == 'inbox' ? _jobs.watchInbox() : _jobs.watchAllJobs())
-            .first;
+    T? enumFilter<T extends Enum>(String key, List<T> values) {
+      final raw = arguments[key];
+      if (raw == null) return null;
+      final match = values.where((v) => v.persistedName == raw).firstOrNull;
+      if (match == null) throw _RpcError(-32602, 'Invalid $key.');
+      return match;
+    }
+
+    final filters = JobListFilters(
+      stage: enumFilter('application_status', ApplicationStatus.values),
+      outcome: enumFilter('application_outcome', ApplicationOutcome.values),
+      review: enumFilter('review_state', ReviewState.values),
+      availability: enumFilter('availability', JobAvailability.values),
+    );
+    final offset = _boundedInt(
+      arguments['offset'],
+      defaultValue: 0,
+      min: 0,
+      max: 100000000,
+    );
+    final jobs = await _jobs
+        .watchJobs(
+          view: view as String,
+          search: query,
+          filters: filters,
+          limit: limit,
+          offset: offset,
+        )
+        .first;
+    final total = await _jobs
+        .watchJobCount(view: view, search: query, filters: filters)
+        .first;
     final filtered = searchJobsByText(jobs, query);
     return {
       'jobs': [
@@ -322,7 +436,8 @@ class McpServer {
           },
       ],
       'count': filtered.take(limit).length,
-      'total_count': filtered.length,
+      'total_count': total,
+      'next_offset': offset + jobs.length < total ? offset + jobs.length : null,
     };
   }
 
@@ -1599,7 +1714,7 @@ final _toolDefinitions = <Map<String, Object?>>[
   {
     'name': 'jobs_search',
     'description':
-        'Search locally retained jobs. Each result includes source_family from the earliest recorded observation, matching the original-source icon in the job list. view=all (default) includes hidden and historical jobs, newest first. view=inbox matches the UI to-do queue: jobs awaiting review, ready to apply, or needing an AI retry (ai_error explains the failure). Blocked employers and ended applications are excluded. total_count includes all matches before limit; for view=inbox without a query it is the navigation inbox count. Without a query, Inbox puts AI failures first, then orders each group by overall fit score descending (unscored last), newest and job ID. A query ranks by word-match search_score first and uses the view order for ties.',
+        'Search locally retained jobs with database offset/limit pagination and next_offset. view=interviewing matches the Interviews navigation: active applications at Interviewing. Optional application_status, application_outcome, review_state and availability filters intersect the chosen view and text search, matching the desktop Filters dialog. Each result includes source_family from the earliest recorded observation, matching the original-source icon in the job list. view=all (default) includes hidden and historical jobs, newest first. view=inbox matches the UI to-do queue: jobs awaiting review, ready to apply, or needing an AI retry (ai_error explains the failure). Blocked employers and ended applications are excluded. total_count includes all matches before limit; for view=inbox without a query it is the navigation inbox count. Without a query, Inbox puts AI failures first, then orders each group by overall fit score descending (unscored last), newest and job ID. A query ranks by word-match search_score first and uses the view order for ties.',
     'inputSchema': {
       'type': 'object',
       'properties': {
@@ -1610,10 +1725,29 @@ final _toolDefinitions = <Map<String, Object?>>[
         },
         'view': {
           'type': 'string',
-          'enum': ['all', 'inbox'],
+          'enum': ['all', 'inbox', 'interviewing'],
           'default': 'all',
         },
+        'application_status': {
+          'type': 'string',
+          'enum': ApplicationStatus.values.map((v) => v.persistedName).toList(),
+        },
+        'application_outcome': {
+          'type': 'string',
+          'enum': ApplicationOutcome.values
+              .map((v) => v.persistedName)
+              .toList(),
+        },
+        'review_state': {
+          'type': 'string',
+          'enum': ReviewState.values.map((v) => v.persistedName).toList(),
+        },
+        'availability': {
+          'type': 'string',
+          'enum': JobAvailability.values.map((v) => v.persistedName).toList(),
+        },
         'limit': {'type': 'integer', 'minimum': 1, 'maximum': 100},
+        'offset': {'type': 'integer', 'minimum': 0},
       },
       'additionalProperties': false,
     },

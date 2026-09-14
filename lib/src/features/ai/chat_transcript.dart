@@ -17,7 +17,12 @@ class ChatTranscript extends StatefulWidget {
 
 class _ChatTranscriptState extends State<ChatTranscript> {
   final _scroll = ScrollController();
-  late final _activity = widget.harnesses.watchActivity(widget.conversationId);
+  int _limit = 100;
+  late var _activity = widget.harnesses.watchActivity(
+    widget.conversationId,
+    limit: _limit + 1,
+    latest: true,
+  );
   bool _follow = true, _scheduled = false, _adjusting = false;
 
   @override
@@ -49,7 +54,9 @@ class _ChatTranscriptState extends State<ChatTranscript> {
           child: Text('Could not load transcript: ${snapshot.error}'),
         );
       }
-      final entries = (snapshot.data ?? const <AiActivityEntry>[])
+      final rows = snapshot.data ?? const <AiActivityEntry>[];
+      final hasMore = rows.length > _limit;
+      final entries = (hasMore ? rows.skip(rows.length - _limit) : rows)
           .where(
             (entry) =>
                 !(entry.kind == 'tool_call' && entry.text == 'completed'),
@@ -73,9 +80,27 @@ class _ChatTranscriptState extends State<ChatTranscript> {
           child: ListView.builder(
             controller: _scroll,
             padding: const EdgeInsets.all(16),
-            itemCount: entries.length,
-            itemBuilder: (_, index) =>
-                AiActivityEntryView(entry: entries[index]),
+            itemCount: entries.length + (hasMore ? 1 : 0),
+            itemBuilder: (_, index) {
+              if (hasMore && index == 0) {
+                return TextButton(
+                  onPressed: () => setState(() {
+                    _follow = false;
+                    _limit += 100;
+                    _activity = widget.harnesses.watchActivity(
+                      widget.conversationId,
+                      limit: _limit + 1,
+                      latest: true,
+                    );
+                  }),
+                  child: const Text('Load earlier messages'),
+                );
+              }
+              return AiActivityEntryView(
+                key: ValueKey(entries[index - (hasMore ? 1 : 0)].id),
+                entry: entries[index - (hasMore ? 1 : 0)],
+              );
+            },
           ),
         ),
       );

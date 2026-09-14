@@ -11,6 +11,7 @@ import 'src/storage/configuration_repository.dart';
 import 'src/storage/database.dart';
 import 'src/storage/document_template_repository.dart';
 import 'src/storage/job_repository.dart';
+import 'src/storage/interview_repository.dart';
 import 'src/storage/profile_repository.dart';
 
 Future<void> main() async {
@@ -33,6 +34,7 @@ Future<void> main() async {
     runner: StdioAcpAgentRunner(permissionPrompt: approvals.request),
   );
   await harnesses.resumePendingSearchAnalysis();
+  await harnesses.startInterviewPreparationMonitor();
   await harnesses.monitorWorkExpiry();
   final configuration = ConfigurationRepository(database, jobs);
   SearchScheduler(configuration, harnesses).start();
@@ -44,6 +46,10 @@ Future<void> main() async {
       profile: ProfileRepository(database),
       templates: templates,
       harnesses: harnesses,
+      interviews: InterviewRepository(database),
+      onPrepareInterviews: (jobId) async {
+        await harnesses.queueInterviewPreparation(jobId);
+      },
     ),
   );
 }

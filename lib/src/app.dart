@@ -1,3 +1,4 @@
+import 'storage/interview_repository.dart';
 import 'package:flutter/material.dart';
 
 import 'features/home/home_screen.dart';
@@ -15,6 +16,8 @@ class CareerShopperApp extends StatelessWidget {
     required this.profile,
     required this.templates,
     required this.harnesses,
+    this.interviews,
+    this.onPrepareInterviews,
     this.navigatorKey,
     super.key,
   });
@@ -25,6 +28,8 @@ class CareerShopperApp extends StatelessWidget {
   final ProfileStore profile;
   final DocumentTemplateStore templates;
   final AiHarnessStore harnesses;
+  final InterviewRepository? interviews;
+  final Future<void> Function(String)? onPrepareInterviews;
 
   @override
   Widget build(BuildContext context) {
@@ -59,6 +64,8 @@ class CareerShopperApp extends StatelessWidget {
         profile: profile,
         templates: templates,
         harnesses: harnesses,
+        interviews: interviews,
+        onPrepareInterviews: onPrepareInterviews,
       ),
     );
   }

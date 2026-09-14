@@ -950,3 +950,259 @@ reads as an empty list, requiring no database migration. Untouched structured
 document prompts upgrade to the company-aware default; custom prompts remain
 intact, with shared factual/research guidance supplied separately. Existing
 scores and letters change only when the user requests reanalysis/regeneration.
+
+## Interview preparation and practice
+
+Jobs have an **Interviews** tab backed by `InterviewRepository`. Schema 18 adds
+job workspaces, immutable intel/question/context revisions, practice snapshots,
+exchange checkpoints with correction history, and desktop preparation settings.
+The ordered ladder is validated JSON in its workspace. Removed stages are
+archived; user question overrides survive bank refreshes. Job availability,
+review state, application stage, and outcome stay independent.
+
+| Desktop/data operation | MCP tool |
+| --- | --- |
+| Workspace, ladder, preparation state, settings | `interview_get` |
+| Historical research/context/bank revision | `interview_revision_get` |
+| Add, edit, duplicate, reorder, archive stages and interviewer assignments | `interview_stages_save` |
+| Inspect available saved document pairs | `interview_materials_list` |
+| Select submitted/practice materials or attach submitted text | `interview_context_save` |
+| Save sourced intel and stage question bank | `interview_preparation_submit` |
+| Read stage questions and coverage gaps | `interview_questions_get` |
+| User question edits/additions/archive | `interview_question_save` |
+| Create practice and copy its harness prompt | `interview_practice_start` |
+| Pinned context, rubric, transcript, feedback, correction history | `interview_practice_context_get` |
+| Save a line of questioning and its assessment | `interview_practice_exchange_save` |
+| Pause/resume/abandon/complete practice | `interview_practice_state_set` |
+| Practice history | `interview_practices_list` |
+| Comparable completed-practice score/dimension series | `interview_statistics_get` |
+
+All writes share nested payload validation, ownership and revision checks with
+the UI. A requested practice authorizes its subsequent checkpoints/state changes.
+New exchanges use expected_revision -1; identical retries do not duplicate data.
+Corrections keep previous exchange payloads. Completed/abandoned practices are
+immutable; start a new practice for a new attempt. Applicant-specific guidance
+uses pinned confirmed Resume evidence, never treats spoken answers as new facts.
+
+Preparation is one combined intel/question submission so revisions become
+visible atomically. Source-backed reports require citation IDs and retrieval
+timestamps; predictions and gaps are explicit. Only an untouched empty ladder
+is prepopulated. Later stage proposals are visible for user selection. Same-payload
+submission retries are safe while the current revision is unchanged.
+
+Moving a job to Interviewing initializes its workspace in the status transaction.
+Existing Interviewing jobs gain pending workspaces on migration. Repeated status
+writes and later re-entry preserve the workspace. **Automatic preparation** is
+on by default: the desktop researches pending Interviewing jobs using the current
+default ACP agent. Users can select another research agent or persistently turn
+automatic preparation off. Missing default-agent setup leaves work pending until
+an agent is configured. **Prepare with AI** starts preparation explicitly. The desktop monitor uses
+existing work orders, durable ACP session IDs, and work items. Queued/running
+orders resume on reopening; an explicit stop remains paused and a failed attempt
+requires retry. Refreshes preserve earlier successful packets. Follow-up messages
+continue the same preparation conversation.
+
+Preparation buttons and the saved auto-preparation/agent choice control the
+harness, so MCP exposes their resulting state read-only, not agent launch or
+configuration tools. A standalone user-requested harness can perform research
+and submit it directly through the same data contract. Scoped researchers may
+only read the assigned job and relevant profile/documents and submit preparation;
+they cannot change career facts, job outcomes, stages, settings, or start other
+agents. Expired, finished, and foreign-job scopes cannot mutate records. The
+read-only essay writer gets no interview tools.
+
+A practice snapshots stage settings/weights, intel, stage questions, selected
+application context, and confirmed resume evidence. By default interview_get
+returns the latest non-staged saved application document pair, with attribution
+latest_application_documents; explicit context selection overrides it. No manual
+selection is required. Banks and practices pin the resolved text/material ID so
+later documents do not alter history. Transcript fidelity is explicitly verbatim,
+partial, or summary; there is no audio storage or audio-dependent grading.
+The official score is 25 times the weighted mean of each assessed dimension's
+mean (0–4). Unassessed dimensions are omitted and no assessed weight yields no
+score. Confidence stays separate. The UI shows graded-question and criterion
+coverage and graphs date-based series grouped by job/stage, rubric weights,
+difficulty, personality/instructions, coaching, and known harness/model. Only
+completed sessions enter trends; all states remain in practice history.
+
+Voice is supplied by the user's harness. A real voice transcript/checkpoint
+smoke test remains necessary before claiming complete voice integration; text
+protocol and widget tests do not establish voice transcript fidelity.
+
+
+## Jobs navigation and interview preparation review
+
+The Jobs destination combines Inbox and All jobs in a segmented control; its
+selection survives navigation to another destination. Interviews lists active
+applications at the Interviewing stage and opens their Interviews tab directly.
+The list shows the next unfinished stage, scheduled date when known, and preparation
+state. `jobs_search(view: "interviewing")` uses the same shared predicate;
+`interview_get` supplies the ladder and preparation state shown on each card.
+Ended interviews remain accessible through All jobs.
+
+The Filters dialog now filters application stage, outcome, review disposition and
+availability independently, intersecting the chosen view and text search. The same
+optional fields on `jobs_search` use shared JobListFilters matching; omitted fields
+mean any. Counts reflect all matching records before MCP pagination. Clearing
+filters leaves the selected view and search intact.
+
+Intel is a continuous document with section headings. Company information is
+visible initially; More expands the remaining sections together. This is presentation
+only; `interview_get` continues to return the entire packet.
+
+ACP prompts, the preparation-submit tool description and the bundled skill require
+coverage of each material posting requirement, with technical fundamentals, concrete
+code/query/debugging questions and applied tradeoffs. First-stage AI screens can be
+technical. Document follow-ups explicitly reference the known passage. Banks also
+include deliberate ambiguity and professional pressure, with criteria that reward
+clarification and explicit assumptions. Difficulty/personality affect pressure;
+uncertain employer tactics are never presented as reported facts.
+
+
+Interview banks now expose stage_targets through interview_get and
+interview_questions_get: at least 40 primary questions per active stage, or five
+times estimated capacity (one primary question per five stage minutes). These
+are preparation targets, not a restriction on saving a partial packet. The UI
+shows actual counts and shortfalls. Agents use the sourced bundled question-pattern
+catalog, including multiple variants, plus company/role-specific research.
+
+Question depends_on is optional for compatibility with existing JSON banks.
+UI prerequisite checkboxes and MCP saves use the same validation: active same-stage
+references, no duplicates, no cycles. Refresh validates the merged bank including
+user overrides so it cannot silently remove prerequisites. No database columns
+changed. Saved legacy questions with no depends_on remain independent.
+
+New practices pin a randomized topological order and selection_history counts.
+Random choices are made among the least-practiced currently eligible questions;
+only recorded interviewer turns count as exposure, once per question per practice.
+Matching normalizes question text so refreshes with new IDs retain exposure.
+Unstarted practice plans do not count as asked. Repeated starts with the same
+client request ID and resumed practices preserve their exact original order.
+The voice harness takes a time-appropriate subset with prerequisites and follow-ups
+intact, using explicit revisit requests when supplied. The full bank remains
+available through interview_questions_get; no general ACP control is exposed.
+
+
+The research button shows Starting research immediately on click, then a spinner
+and Queued/In progress labels while the saved preparation state is active. It
+prevents duplicate clicks. A workspace subscription updates queued/running/ready/
+failed/paused states without waiting for the periodic practice-history refresh.
+The same persisted state and errors are readable through interview_get. Starting
+is only a transient local dispatch indicator, not a claim that ACP is running.
+
+
+Preparation activity is derived from the latest interview work order while it is
+queued/running, even if a packet has already been saved. Packet submission marks
+the work item complete but does not finish the ACP turn; the button stays busy
+until the work order finishes. interview_get exposes this effective
+preparation_state plus research_activity (work_order_id/status), and the UI
+subscription watches both workspace and work-order changes. Saved intel remains
+readable during this time. This also covers follow-up messages in the same
+research conversation and keeps the Interviews list in sync.
+
+Interview reports show the employer's locally cached logo above the intel document.
+`interview_get.company` exposes its name, logo availability, and source URL (as
+`job_get` does for job listings). `interview_preparation_submit.employer_logo_url`
+accepts an optional discovered company image using the same shared logo cache and
+validation as listing import. Image work runs after the atomic research save;
+failures return `logo_warning` and preserve the packet and any prior logo. Viewing
+the report does not fetch remote images. Duplicate packet retries skip image work.
+The optional `intel.stage_proposals` defaults to an empty array; an existing ladder
+is retained, and question stage references are still validated. Empty ladders need
+proposals before a bank can reference those stages.
+
+The shared preparation instructions and question-field MCP descriptions require
+ready-to-ask prompts with concrete scenarios, referenced code/data/alternatives,
+and question-specific grading criteria. The bundled skill illustrates complete
+questions versus unfinished topic templates and distinguishes bounded oral design
+questions from project briefs. Deliberate ambiguity remains supported with prepared
+clarification answers. These guide AI authoring; schema validation does not claim
+to judge semantic quality or reject user questions by wording patterns. Refresh
+instructions audit and rewrite incomplete templates in an existing bank.
+
+### Bounded reads and live updates
+
+Jobs now load 50 rows initially, with Load more jobs expanding the SQL limit.
+Text relevance, view eligibility, and Filters are applied before LIMIT/OFFSET by
+shared JobRepository queries. Searches cover unloaded jobs; Inbox retains its
+existing stable ordering while the user works. Its navigation count is a SQL
+aggregate. `jobs_search` accepts offset/limit and returns total_count/next_offset.
+Single-job reads constrain the same query by primary key.
+
+AI Activity loads 50 conversation summaries and the newest 100 transcript entries,
+with controls to load more conversations or earlier messages. MCP
+`ai_conversations_list` now accepts offset/limit and returns next_offset;
+`ai_conversation_get` applies its existing pagination in SQL and returns the total
+and next_offset. Internal workflows that need full history retain explicit access.
+
+The interview panel refreshes on relevant saved-data changes. A two-second
+PRAGMA data_version check detects separate MCP connections; only a changed
+version triggers a compact metadata comparison, and only changed interview
+metadata reloads the panel. It no longer reloads the full workspace every five
+seconds. Navigation rows read only ladder/status summaries. Question
+widgets display 50 at a time; banks remain revisioned JSON and are decoded as a
+whole when changed, so question pagination limits returned/rendered entries, not
+JSON parsing. Practice list/statistics reads use compact snapshot projections and
+batched assessments, avoiding per-practice full-context/history loads. Existing
+interview_get/questions_get/practices_list/statistics_get expose the same data.
+Schema 19 adds indexes for job observations, work items/orders, activity ordering,
+materials and interview history; it preserves all saved records.
+
+### Automatic practice stage and difficulty
+
+UI setup defaults to the current stage and automatic difficulty; MCP
+interview_practice_start uses those same defaults when stage_id and
+settings.difficulty are omitted. interview_get.current_stage exposes the first
+non-archived planned/scheduled stage in ladder order. A completed practice never
+advances the real ladder; no current stage produces an actionable error rather
+than silently revisiting a finished stage. Explicit stage IDs still allow revisits.
+
+Automatic difficulty starts at 2/5, advances after each two completed practices
+for the same job/stage, and caps at 5. Paused, active and abandoned attempts do not
+count; completed coached and fixed-level attempts do. Supplying difficulty chooses
+a fixed level. The resolved level, history count and delivery guidance are pinned
+in the snapshot (difficulty_progression) and shown in practice details. Retries and
+resumes retain those choices even if the ladder or history changes. Existing fixed
+practice snapshots remain unchanged; graph grouping still uses the numeric level.
+Question selection prioritizes the session level, then easier questions, and
+randomizes by exposure within each suitability group while preserving dependencies.
+The skill supports one-request setup by job name and a warm-up-to-target delivery
+style without requiring the user to configure preferences each time.
+
+### Interview overview and voice handoff
+
+The interview overview leads with the current stage, instructions for starting
+voice practice in a connected harness, and a copyable request for the selected
+job. Copying includes the job ID to avoid ambiguous employer/role matches; it
+neither creates a practice nor launches or messages a harness. The overview also
+shows the company intel, with the rest of the report behind More. Question-bank
+editing, practice history/trends, and stage/application/research settings are in
+separate views. Question filtering affects only the question bank.
+
+This is presentation and clipboard organization over existing shared services.
+Existing job_get, interview_get, interview_questions_get, interview_practices_list,
+interview_statistics_get and the interview editing/practice tools provide the same
+data and actions; no MCP schema or database change is needed. The skill's
+one-request practice workflow remains the voice entry point. Widget tests cover
+navigation, clipboard job identity without creating a session, customization,
+research status, stage/question editing and saved progress.
+
+### Spoken practice turn-taking
+
+The practice handoff prompt, context/save tool descriptions and bundled skill keep
+checkpointing out of the spoken interview. The agent saves a completed question
+and its follow-ups before asking the next, then yields for the answer. Tool results,
+incidental sounds and presence checks do not advance the pending question. Spoken
+assessment is deferred unless coaching is enabled; relevant save failures remain
+reportable. The skill calls for a brief neutral acknowledgment before saving and
+a specific follow-up when more detail is needed, rather than waiting silently for
+a richer answer. Requested thinking time is respected. This changes guidance only,
+not checkpoint payloads, persisted
+snapshots, scoring or permissions. Voice timing remains controlled by the harness.
+
+The voice skill also uses available completion/pause cues for turn-taking. A
+prolonged observable pause with unclear completion prompts a brief check about
+whether the applicant wants more time, while keeping the same question pending.
+It respects requested thinking time and does not assume that text-only harnesses
+expose silence, timing or continuous audio. This is skill guidance, not a new
+CareerShopper audio detector or timer.

@@ -954,6 +954,7 @@ void main() {
       var local = CareerShopperDatabase(NativeDatabase(file));
       try {
         await local.customSelect('SELECT * FROM material_sets').get();
+        await local.customStatement('DROP INDEX material_application');
         await local.customStatement(
           'ALTER TABLE material_sets DROP COLUMN staged',
         );

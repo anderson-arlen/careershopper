@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 import 'app_data_directory.dart';
 
 part 'database.g.dart';
+part 'interview_tables.dart';
 
 @DataClassName('SavedSearchRow')
 class SavedSearches extends Table {
@@ -555,6 +556,11 @@ class AuditEvents extends Table {
     MaterialClaims,
     Artifacts,
     AuditEvents,
+    InterviewWorkspaces,
+    InterviewRevisions,
+    InterviewPractices,
+    InterviewExchanges,
+    InterviewSettings,
   ],
 )
 class CareerShopperDatabase extends _$CareerShopperDatabase {
@@ -591,13 +597,34 @@ class CareerShopperDatabase extends _$CareerShopperDatabase {
     """);
   }
 
+  Future<void> _createReadIndexes() async {
+    for (final sql in const [
+      'CREATE INDEX IF NOT EXISTS job_observation_lookup ON job_observations(job_id, observed_at)',
+      'CREATE INDEX IF NOT EXISTS job_employer_lookup ON jobs(employer_id)',
+      'CREATE INDEX IF NOT EXISTS job_list_order ON jobs(last_seen_at DESC, id)',
+      'CREATE INDEX IF NOT EXISTS work_order_job_kind ON ai_work_orders(job_id, kind, created_at DESC, id DESC)',
+      'CREATE INDEX IF NOT EXISTS work_order_activity_order ON ai_work_orders(updated_at DESC, id DESC)',
+      'CREATE INDEX IF NOT EXISTS work_order_pending ON ai_work_orders(kind, status)',
+      'CREATE INDEX IF NOT EXISTS work_item_order ON ai_work_items(work_order_id, subject_id)',
+      'CREATE INDEX IF NOT EXISTS work_item_subject ON ai_work_items(subject_id, work_order_id, status)',
+      'CREATE INDEX IF NOT EXISTS activity_sequence ON ai_activity_entries(work_order_id, sequence, id)',
+      'CREATE INDEX IF NOT EXISTS material_application ON material_sets(application_id, staged)',
+      'CREATE INDEX IF NOT EXISTS interview_revision_job ON interview_revisions(job_id, created_at DESC, id DESC)',
+      'CREATE INDEX IF NOT EXISTS interview_practice_job ON interview_practices(job_id, created_at DESC, id DESC)',
+      'CREATE INDEX IF NOT EXISTS interview_exchange_order ON interview_exchanges(practice_id, sequence)',
+    ]) {
+      await customStatement(sql);
+    }
+  }
+
   @override
-  int get schemaVersion => 17;
+  int get schemaVersion => 19;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (migrator) async {
       await migrator.createAll();
+      await _createReadIndexes();
       await _createStateChangeTriggers();
       await customStatement(
         'CREATE UNIQUE INDEX saved_search_single_source '
@@ -909,6 +936,26 @@ class CareerShopperDatabase extends _$CareerShopperDatabase {
           'ON saved_search_sources(saved_search_id)',
         );
       }
+      if (from < 18) {
+        final existingTables = (await customSelect(
+          "SELECT name FROM sqlite_master WHERE type = 'table'",
+        ).get()).map((r) => r.read<String>('name')).toSet();
+        for (final table in <TableInfo>[
+          interviewWorkspaces,
+          interviewRevisions,
+          interviewPractices,
+          interviewExchanges,
+          interviewSettings,
+        ]) {
+          if (!existingTables.contains(table.actualTableName)) {
+            await migrator.createTable(table);
+          }
+        }
+        await customStatement(
+          "INSERT OR IGNORE INTO interview_workspaces (job_id, updated_at) SELECT job_id, updated_at FROM applications WHERE status = 'interviewing'",
+        );
+      }
+      if (from < 19) await _createReadIndexes();
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');

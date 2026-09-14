@@ -1,3 +1,4 @@
+import '../domain/interview.dart';
 import '../domain/chat_image.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -24,6 +25,9 @@ import 'listing_availability_service.dart';
 import 'document_template_repository.dart';
 import 'resume_content_repository.dart';
 import '../documents/resume_content.dart';
+import 'interview_repository.dart';
+
+part 'interview_preparation.dart';
 
 class AiHarnessProfile {
   const AiHarnessProfile({
@@ -217,7 +221,11 @@ abstract interface class AiHarnessStore {
   });
   Stream<List<AiHarnessProfile>> watchProfiles();
 
-  Stream<List<AiConversation>> watchConversations({String? jobId});
+  Stream<List<AiConversation>> watchConversations({
+    String? jobId,
+    int? limit,
+    int offset = 0,
+  });
 
   Future<String> startJobConversation(
     String jobId,
@@ -226,7 +234,12 @@ abstract interface class AiHarnessStore {
     List<ChatImage> images = const [],
   });
 
-  Stream<List<AiActivityEntry>> watchActivity(String conversationId);
+  Stream<List<AiActivityEntry>> watchActivity(
+    String conversationId, {
+    int? limit,
+    int offset = 0,
+    bool latest = false,
+  });
 
   Future<AcpRegistrySnapshot> fetchRegistry({bool refresh = false});
 
@@ -306,6 +319,9 @@ class AiHarnessRepository implements AiHarnessStore {
   final AcpAgentRunner _runner;
   final ListingAvailabilityService _availability;
   final Set<String> _configuring = {};
+  Timer? _interviewTimer;
+  bool _interviewPolling = false;
+  final Set<String> _interviewRunning = {};
   final _activeTurns =
       <
         String,
@@ -1538,9 +1554,17 @@ Review (untrusted feedback): ${jsonEncode(review.toString())}''',
   }
 
   @override
-  Stream<List<AiConversation>> watchConversations({String? jobId}) {
+  Stream<List<AiConversation>> watchConversations({
+    String? jobId,
+    int? limit,
+    int offset = 0,
+  }) {
     final query = database.select(database.aiWorkOrders)
-      ..orderBy([(row) => OrderingTerm.desc(row.updatedAt)]);
+      ..orderBy([
+        (row) => OrderingTerm.desc(row.updatedAt),
+        (row) => OrderingTerm.desc(row.id),
+      ]);
+    if (limit != null) query.limit(limit, offset: offset);
     if (jobId != null) {
       query.where(
         (row) =>
@@ -1571,15 +1595,26 @@ Review (untrusted feedback): ${jsonEncode(review.toString())}''',
   }
 
   @override
-  Stream<List<AiActivityEntry>> watchActivity(String conversationId) {
+  Stream<List<AiActivityEntry>> watchActivity(
+    String conversationId, {
+    int? limit,
+    int offset = 0,
+    bool latest = false,
+  }) {
     // Sent attachments are immutable. Keep their byte identity stable so text
     // streaming does not repeatedly decode the same image in Flutter's cache.
     final images = <String, List<ChatImage>>{};
     final query = database.select(database.aiActivityEntries)
       ..where((row) => row.workOrderId.equals(conversationId))
-      ..orderBy([(row) => OrderingTerm.asc(row.sequence)]);
+      ..orderBy([
+        (row) => latest
+            ? OrderingTerm.desc(row.sequence)
+            : OrderingTerm.asc(row.sequence),
+        (row) => latest ? OrderingTerm.desc(row.id) : OrderingTerm.asc(row.id),
+      ]);
+    if (limit != null) query.limit(limit, offset: offset);
     return query.watch().map(
-      (rows) => rows
+      (rows) => (latest ? rows.reversed : rows)
           .map(
             (row) => AiActivityEntry(
               id: row.id,
@@ -2797,6 +2832,40 @@ Review (untrusted feedback): ${jsonEncode(review.toString())}''',
       database.aiWorkOrders,
     )..where((row) => row.id.equals(conversationId))).getSingleOrNull();
     if (order == null) throw ArgumentError('AI conversation no longer exists.');
+    if (order.kind == 'interview_preparation') {
+      await _insertActivity(
+        workOrderId: order.id,
+        role: 'user',
+        kind: 'message',
+        text: normalized,
+        payloadJson: jsonEncode({
+          'images': images.map((image) => image.toContentBlock()).toList(),
+        }),
+        now: DateTime.now().toUtc(),
+      );
+      await database.transaction(() async {
+        await (database.update(
+          database.aiWorkOrders,
+        )..where((r) => r.id.equals(order.id))).write(
+          AiWorkOrdersCompanion(
+            status: const Value('queued'),
+            leasedUntil: const Value(null),
+            updatedAt: Value(DateTime.now().toUtc()),
+          ),
+        );
+        await (database.update(
+          database.aiWorkItems,
+        )..where((r) => r.workOrderId.equals(order.id))).write(
+          AiWorkItemsCompanion(
+            status: const Value('queued'),
+            error: const Value(null),
+            updatedAt: Value(DateTime.now().toUtc()),
+          ),
+        );
+      });
+      unawaited(_runInterviewPreparation(order.id));
+      return;
+    }
     final continuedIn =
         (jsonDecode(order.scopeJson) as Map)['continued_in_work_order_id'];
     if (continuedIn is String) {

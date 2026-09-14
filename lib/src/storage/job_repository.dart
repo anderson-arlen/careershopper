@@ -7,6 +7,7 @@ import '../domain/job.dart';
 import '../domain/job_statistics.dart';
 import '../ingestion/normalization.dart';
 import 'database.dart';
+import 'interview_repository.dart';
 import 'listing_availability_service.dart';
 
 // Shared by the actionable Inbox and statistics so their eligibility cannot drift.
@@ -102,6 +103,19 @@ abstract interface class JobStore {
   Stream<JobStatistics> watchStatistics({DateTime? changedSince});
 
   Stream<List<EmployerRow>> watchBlockedEmployers();
+
+  Stream<List<InboxJob>> watchJobs({
+    String view = 'all',
+    String search = '',
+    JobListFilters filters = const JobListFilters(),
+    int limit = 50,
+    int offset = 0,
+  });
+  Stream<int> watchJobCount({
+    String view = 'all',
+    String search = '',
+    JobListFilters filters = const JobListFilters(),
+  });
 
   Stream<List<InboxJob>> watchInbox();
 
@@ -362,6 +376,9 @@ class JobRepository implements JobStore {
           ),
         );
       }
+      if (status == ApplicationStatus.interviewing) {
+        await InterviewRepository(database).ensure(jobId);
+      }
       // Recording a past application does not establish its submission date.
       // Keep any known appliedAt value; do not invent one from today's date.
       await database
@@ -445,7 +462,20 @@ class JobRepository implements JobStore {
   @override
   Stream<List<InboxJob>> watchAllJobs() => _watchJobs(inboxOnly: false);
 
-  Stream<List<InboxJob>> _watchJobs({required bool inboxOnly}) {
+  ({
+    JoinedSelectStatement<HasResultSet, dynamic> query,
+    Expression<bool> ready,
+    Expression<String> error,
+    Expression<String> source,
+  })
+  _jobQuery({
+    required bool inboxOnly,
+    String? jobId,
+    String search = '',
+    JobListFilters filters = const JobListFilters(),
+    bool interviewing = false,
+    bool countOnly = false,
+  }) {
     final readyToApply = CustomExpression<bool>(
       _readyToApplySql,
       watchedTables: [
@@ -464,36 +494,183 @@ class JobRepository implements JobStore {
       "ORDER BY o.observed_at, o.rowid LIMIT 1), 'unknown')",
       watchedTables: [database.jobObservations],
     );
-    final query = database.select(database.jobs).join([
+    final query = countOnly
+        ? database.selectOnly(database.jobs)
+        : database.select(database.jobs).join([]);
+    query.join([
       innerJoin(
         database.jobSnapshots,
         database.jobSnapshots.id.equalsExp(database.jobs.currentSnapshotId),
+        useColumns: !countOnly,
       ),
       leftOuterJoin(
         database.employers,
         database.employers.id.equalsExp(database.jobs.employerId),
+        useColumns: !countOnly,
       ),
       leftOuterJoin(
         database.jobEvaluations,
         database.jobEvaluations.id.equalsExp(database.jobs.currentEvaluationId),
+        useColumns: !countOnly,
       ),
       leftOuterJoin(
         database.applications,
         database.applications.jobId.equalsExp(database.jobs.id),
+        useColumns: !countOnly,
       ),
     ]);
 
-    query.addColumns([readyToApply, aiError, sourceFamily]);
-    if (inboxOnly) {
-      query.where(const CustomExpression<bool>(_inboxEligibilitySql));
+    if (!countOnly) query.addColumns([readyToApply, aiError, sourceFamily]);
+    if (jobId != null) query.where(database.jobs.id.equals(jobId));
+    if (interviewing) {
+      query.where(
+        database.applications.status.equals('interviewing') &
+            database.applications.outcome.equals('active'),
+      );
     }
-    query.orderBy([
-      if (inboxOnly) OrderingTerm.desc(aiError.isNotNull()),
-      if (inboxOnly) OrderingTerm.desc(database.jobEvaluations.overallScore),
-      OrderingTerm.desc(database.jobs.lastSeenAt),
-      OrderingTerm.asc(database.jobs.id),
-    ]);
+    if (filters.stage != null) {
+      query.where(
+        coalesce([
+          database.applications.status,
+          const Constant('not_applied'),
+        ]).equals(filters.stage!.persistedName),
+      );
+    }
+    if (filters.outcome != null) {
+      query.where(
+        coalesce([
+          database.applications.outcome,
+          const Constant('active'),
+        ]).equals(filters.outcome!.persistedName),
+      );
+    }
+    if (filters.review != null) {
+      query.where(
+        database.jobs.reviewState.equals(filters.review!.persistedName),
+      );
+    }
+    if (filters.availability != null) {
+      query.where(
+        database.jobs.availability.equals(filters.availability!.persistedName),
+      );
+    }
+    final words = search
+        .toLowerCase()
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty)
+        .toSet();
+    Expression<int> score = const Constant(0);
+    for (final word in words) {
+      for (final field in <Expression<String>>[
+        database.jobs.id,
+        database.jobSnapshots.title,
+        database.jobSnapshots.description,
+        coalesce([
+          database.employers.displayName,
+          const Constant('Employer not identified'),
+        ]),
+      ]) {
+        score =
+            score +
+            FunctionCallExpression<int>('instr', [
+              field.lower(),
+              Variable(word),
+            ]).isBiggerThanValue(0).cast<int>();
+      }
+    }
+    if (words.isNotEmpty) query.where(score.isBiggerThanValue(0));
+    if (inboxOnly) {
+      query.where(
+        CustomExpression<bool>(
+          _inboxEligibilitySql,
+          watchedTables: [
+            database.materialSets,
+            database.aiWorkOrders,
+            database.aiWorkItems,
+          ],
+        ),
+      );
+    }
+    if (!countOnly) {
+      query.orderBy([
+        if (words.isNotEmpty) OrderingTerm.desc(score),
+        if (inboxOnly) OrderingTerm.desc(aiError.isNotNull()),
+        if (inboxOnly) OrderingTerm.desc(database.jobEvaluations.overallScore),
+        OrderingTerm.desc(database.jobs.lastSeenAt),
+        OrderingTerm.asc(database.jobs.id),
+      ]);
+    }
 
+    return (
+      query: query,
+      ready: readyToApply,
+      error: aiError,
+      source: sourceFamily,
+    );
+  }
+
+  @override
+  Stream<List<InboxJob>> watchJobs({
+    String view = 'all',
+    String search = '',
+    JobListFilters filters = const JobListFilters(),
+    int limit = 50,
+    int offset = 0,
+  }) {
+    if (!['all', 'inbox', 'interviewing'].contains(view) ||
+        limit < 1 ||
+        offset < 0) {
+      throw ArgumentError('Invalid job page.');
+    }
+    return _watchJobs(
+      inboxOnly: view == 'inbox',
+      interviewing: view == 'interviewing',
+      search: search,
+      filters: filters,
+      limit: limit,
+      offset: offset,
+    );
+  }
+
+  @override
+  Stream<int> watchJobCount({
+    String view = 'all',
+    String search = '',
+    JobListFilters filters = const JobListFilters(),
+  }) {
+    final parts = _jobQuery(
+      inboxOnly: view == 'inbox',
+      interviewing: view == 'interviewing',
+      search: search,
+      filters: filters,
+      countOnly: true,
+    );
+    final count = database.jobs.id.count();
+    parts.query.addColumns([count]);
+    return parts.query.watchSingle().map((r) => r.read(count) ?? 0).distinct();
+  }
+
+  Stream<List<InboxJob>> _watchJobs({
+    required bool inboxOnly,
+    String? jobId,
+    bool interviewing = false,
+    String search = '',
+    JobListFilters filters = const JobListFilters(),
+    int? limit,
+    int offset = 0,
+  }) {
+    final parts = _jobQuery(
+      inboxOnly: inboxOnly,
+      jobId: jobId,
+      interviewing: interviewing,
+      search: search,
+      filters: filters,
+    );
+    final query = parts.query;
+    final readyToApply = parts.ready,
+        aiError = parts.error,
+        sourceFamily = parts.source;
+    if (limit != null) query.limit(limit, offset: offset);
     return query.watch().map(
       (rows) => rows
           .map((row) {
@@ -538,11 +715,11 @@ class JobRepository implements JobStore {
   }
 
   Future<InboxJob?> getJob(String id) async {
-    final jobs = await watchAllJobs().first;
-    for (final job in jobs) {
-      if (job.id == id) return job;
-    }
-    return null;
+    return (await _watchJobs(
+      inboxOnly: false,
+      jobId: id,
+      limit: 1,
+    ).first).firstOrNull;
   }
 
   Future<List<String>> searchAnalysisCandidates(

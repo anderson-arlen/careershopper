@@ -1,9 +1,18 @@
 ---
 name: careershopper
-description: Use for job applications, application answers, career profiles, searches, evaluations, documents, and tracking through CareerShopper MCP. Generate essay answers with application_answer_generate. Default to answers in chat; fill an application form only when directly asked, using mouse and keyboard controls only. Never enter form values programmatically or submit applications.
+description: Use for job applications, application answers, career profiles, searches, evaluations, documents, interview research and practice, and tracking through CareerShopper MCP. Generate essay answers with application_answer_generate. Default to answers in chat; fill an application form only when directly asked, using mouse and keyboard controls only. Never enter form values programmatically or submit applications.
 ---
 
 # Work with CareerShopper
+
+## Interview preparation and mock interviews
+
+For company/interview research, an interview ladder, a question bank, or a mock
+interview, read [references/interviews.md](references/interviews.md). Use the
+`interview_*` tools for these workflows. A requested practice authorizes its
+routine transcript/feedback checkpoints without asking again after each question.
+Preserve actual quoted transcript text, including punctuation; the writing rule
+below applies to authored prose, not a verbatim record of what someone said.
 
 ## Mandatory writing rule: no em dashes
 

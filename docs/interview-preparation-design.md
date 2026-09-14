@@ -1,7 +1,16 @@
 # Interview ladders, intelligence, and practice
 
-Status: proposed design, not implemented. Based on the working tree inspected
-on September 13, 2026, whose database schema is currently version 17.
+Status: initial implementation in progress against schema 18. Ladder editing,
+research/question revisions, ACP preparation/recovery, MCP practice checkpoints,
+scoring and the Interviews tab are implemented in the working tree. See
+[UI/MCP parity](mcp-ui-parity.md#interview-preparation-and-practice) for the actual
+contract. The design below remains the broader acceptance reference. Live voice
+transcript fidelity and a user-driven end-to-end rehearsal are not yet verified.
+
+Implementation choices: store the ladder as validated workspace JSON and submit
+intel plus questions atomically. Keep completed practices immutable and record
+corrections only while active. Five text-assessable dimensions are supported;
+audio delivery scoring and raw audio are excluded.
 
 ## Product workflow
 
@@ -13,7 +22,7 @@ They remain available after rejection, withdrawal, a closed listing, or a hire.
 
 1. The user marks a job Interviewing. CareerShopper creates its interview
    workspace if absent and records that intelligence preparation is needed.
-2. With automatic preparation enabled for a configured ACP harness, the desktop
+2. Automatic preparation is on by default. With a configured ACP harness, the desktop
    dispatches a job-scoped research and question-preparation task to that local
    harness. Without that configuration, the tab shows preparation pending and
    identifies the missing ACP setup.
@@ -33,11 +42,12 @@ They remain available after rejection, withdrawal, a closed listing, or a hire.
    assessments and stores the agent's debrief. The tab graphs comparable
    sessions and identifies recurring areas to practice.
 
-Automatic preparation is an explicit, persistent user preference describing
-the trigger and selected harness. Enabling it authorizes future interview
-transitions; it does not require another confirmation on every job. Merely
-installing the feature does not enable outbound AI work. An explicit request
-to prepare a particular job also authorizes that preparation.
+Moving a job to Interviewing starts ACP preparation by default using the current
+default harness. Users can choose a different research agent or persistently turn
+automatic preparation off. No confirmation is needed for each transition. Without
+a configured harness, work remains pending and starts after setup. Existing
+Interviewing jobs with pending workspaces are also prepared when the desktop runs.
+An explicit request to prepare a particular job also authorizes preparation.
 
 ## Configurable ladder
 
@@ -124,17 +134,24 @@ Coverage includes role fundamentals, company/product understanding, motivation,
 behavioral evidence, technical depth, design tradeoffs, project walkthroughs,
 leadership and collaboration where relevant, and questions for the interviewer.
 Screening, hiring-manager, peer, and executive stages get different emphases.
+Use the sourced bundled interview-question-patterns.md catalog and additional
+company research to cover relevant pressure and question families. Bank targets
+are at least 40 distinct primary questions per active stage, or five times estimated
+session capacity, with follow-ups in addition. These are multi-session banks.
+New practice snapshots randomize among least-practiced eligible questions while
+respecting explicit same-stage depends_on prerequisites. Recorded question exposure
+survives regeneration by normalized prompt matching; unasked plans do not count.
+Resuming preserves the pinned order. Stage time limits constrain a session subset,
+not the size of the preparation bank.
 An executive stage is not assumed to be present merely because the company has
 an executive roster.
 
-Practice must use the documents the employer actually received when available.
-Existing MaterialSets are immutable, but the current read tool returns the
-latest saved pair and does not establish that it was submitted. Add an explicit
-job-level material-set selection with an attribution of user-confirmed submitted
-or selected-for-practice. Do not retroactively label the newest draft submitted.
-If the user submitted different documents, allow their text to be attached as
-an attributed application-context record. Those documents are historical context,
-not automatically confirmed career evidence.
+Research and practice automatically use the latest saved application resume and
+cover letter for this job. No selection step is required. An explicit user-selected
+material set or pasted submitted answers overrides that default. Use a distinct
+latest_application_documents attribution, keeping historical documents separate
+from confirmed career evidence. Snapshot the actual text and material ID with each
+question bank and practice so future document changes do not alter past sessions.
 
 Pin the selected material set/context and relevant confirmed Resume revisions
 when a question bank or practice starts. Preserve document-block references so
@@ -253,7 +270,7 @@ The status transaction creates the interview workspace and preparation-needed
 marker once for the actual transition. The desktop claims authorized pending
 preparation through existing work-order machinery. MCP status updates return
 the same preparation state; the desktop dispatches that pending work through ACP
-under the user's saved automatic-preparation authorization. The configured local
+with automatic preparation enabled by default and respecting an explicit off switch. The configured local
 harness performs the research and submits structured results through its scoped
 MCP connection. Reuse work-order idempotency and expiry handling to prevent
 duplicate preparation for a workspace/revision. MCP does not expose a separate

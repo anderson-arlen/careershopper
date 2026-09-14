@@ -1,3 +1,4 @@
+import '../../storage/interview_repository.dart';
 import 'package:flutter/material.dart';
 
 import '../../storage/ai_harness_repository.dart';
@@ -16,8 +17,8 @@ import '../statistics/statistics_page.dart';
 import '../employers/blocked_employers_page.dart';
 
 enum HomeDestination {
-  inbox,
-  allJobs,
+  jobs,
+  interviews,
   blockedEmployers,
   profile,
   documents,
@@ -34,6 +35,8 @@ class HomeScreen extends StatefulWidget {
     required this.profile,
     required this.templates,
     required this.harnesses,
+    this.interviews,
+    this.onPrepareInterviews,
     super.key,
   });
 
@@ -42,17 +45,17 @@ class HomeScreen extends StatefulWidget {
   final ProfileStore profile;
   final DocumentTemplateStore templates;
   final AiHarnessStore harnesses;
+  final InterviewRepository? interviews;
+  final Future<void> Function(String)? onPrepareInterviews;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  HomeDestination _destination = HomeDestination.inbox;
-  late final _inboxCounts = widget.jobs
-      .watchInbox()
-      .map((jobs) => jobs.length)
-      .distinct();
+  HomeDestination _destination = HomeDestination.jobs;
+  bool _allJobs = false;
+  late final _inboxCounts = widget.jobs.watchJobCount(view: 'inbox').distinct();
 
   Future<void> _addListing() async {
     final jobId = await showDialog<String>(
@@ -60,7 +63,7 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context) => AddListingDialog(repository: widget.jobs),
     );
     if (!mounted || jobId == null) return;
-    setState(() => _destination = HomeDestination.allJobs);
+    setState(() => _destination = HomeDestination.jobs);
     await _runAi(jobId);
   }
 
@@ -125,12 +128,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 destinations: [
                   NavigationRailDestination(
-                    icon: inboxIcon(Icons.inbox_outlined),
-                    selectedIcon: inboxIcon(Icons.inbox),
+                    icon: inboxIcon(Icons.work_outline),
+                    selectedIcon: inboxIcon(Icons.work),
                     label: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Text('Inbox'),
+                        const Text('Jobs'),
                         if (count != null) ...[
                           const SizedBox(width: 8),
                           Text('$count', key: const ValueKey('inbox-count')),
@@ -139,9 +142,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   NavigationRailDestination(
-                    icon: Icon(Icons.work_outline),
-                    selectedIcon: Icon(Icons.work),
-                    label: Text('All jobs'),
+                    icon: Icon(Icons.record_voice_over_outlined),
+                    selectedIcon: Icon(Icons.record_voice_over),
+                    label: Text('Interviews'),
                   ),
                   NavigationRailDestination(
                     icon: Icon(Icons.business_outlined),
@@ -194,28 +197,57 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _content() {
     return switch (_destination) {
-      HomeDestination.inbox => JobBrowser(
-        key: const ValueKey('inbox-browser'),
-        title: 'Inbox',
-        emptyTitle: 'Nothing needs your attention',
-        emptyMessage:
-            'Jobs needing review, ready to apply, or needing an AI retry appear here, ordered by best fit.',
-        jobs: widget.jobs.watchInbox(),
-        refreshJobs: () => widget.jobs.watchInbox().first,
+      HomeDestination.jobs => JobBrowser(
+        key: ValueKey('jobs-browser-$_allJobs'),
+        title: 'Jobs',
+        viewSelector: SegmentedButton<bool>(
+          segments: const [
+            ButtonSegment(value: false, label: Text('Inbox')),
+            ButtonSegment(value: true, label: Text('All jobs')),
+          ],
+          selected: {_allJobs},
+          onSelectionChanged: (value) =>
+              setState(() => _allJobs = value.single),
+        ),
+        emptyTitle: _allJobs
+            ? 'No listings encountered'
+            : 'Nothing needs your attention',
+        emptyMessage: _allJobs
+            ? 'Add a URL or configure a saved search to start building local history.'
+            : 'Jobs needing review, ready to apply, or needing an AI retry appear here, ordered by best fit.',
+        jobs: widget.jobs.watchJobs(view: _allJobs ? 'all' : 'inbox'),
+        pageJobs: (limit, search, filters) => widget.jobs.watchJobs(
+          view: _allJobs ? 'all' : 'inbox',
+          limit: limit,
+          search: search,
+          filters: filters,
+        ),
+        refreshJobs: _allJobs ? null : () => widget.jobs.watchInbox().first,
         repository: widget.jobs,
+        interviews: widget.interviews,
+        onPrepareInterviews: widget.onPrepareInterviews,
         harnesses: widget.harnesses,
         onQueueApplication: (job) => _queueApplication(job.id),
         onAddListing: _addListing,
         onRunAi: (job) => _runAi(job.id, showActivity: job.aiError == null),
       ),
-      HomeDestination.allJobs => JobBrowser(
-        key: const ValueKey('all-jobs-browser'),
-        title: 'All jobs',
-        emptyTitle: 'No listings encountered',
+      HomeDestination.interviews => JobBrowser(
+        key: const ValueKey('interviews-browser'),
+        title: 'Interviews',
+        openInterviews: true,
+        emptyTitle: 'No active interviews',
         emptyMessage:
-            'Add a URL or configure a saved search to start building local history.',
-        jobs: widget.jobs.watchAllJobs(),
+            'Set a job to Interviewing to research the company and practice here.',
+        jobs: widget.jobs.watchJobs(view: 'interviewing'),
+        pageJobs: (limit, search, filters) => widget.jobs.watchJobs(
+          view: 'interviewing',
+          limit: limit,
+          search: search,
+          filters: filters,
+        ),
         repository: widget.jobs,
+        interviews: widget.interviews,
+        onPrepareInterviews: widget.onPrepareInterviews,
         harnesses: widget.harnesses,
         onQueueApplication: (job) => _queueApplication(job.id),
         onAddListing: _addListing,

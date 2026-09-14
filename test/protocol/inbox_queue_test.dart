@@ -169,6 +169,87 @@ void main() {
     return id;
   }
 
+  test('job pages search the complete view and retain total counts', () async {
+    for (var i = 0; i < 7; i++) {
+      await addJob(
+        'page-$i',
+        title: i.isEven ? 'Platform Engineer' : 'Designer',
+        description: i == 0 ? 'special needle' : 'ordinary',
+        score: 80 + i,
+      );
+    }
+    final all = await jobs.watchInbox().first;
+    final page = await jobs.watchJobs(view: 'inbox', limit: 2, offset: 2).first;
+    expect(page.map((j) => j.id), all.skip(2).take(2).map((j) => j.id));
+    expect(await jobs.watchJobCount(view: 'inbox').first, 7);
+    final results = await jobs
+        .watchJobs(view: 'inbox', search: 'needle', limit: 1)
+        .first;
+    expect(results.single.description, 'special needle');
+    final response = await rpc(db, 'tools/call', {
+      'name': 'jobs_search',
+      'arguments': {'view': 'inbox', 'limit': 2, 'offset': 2},
+    });
+    final data = (response['result'] as Map)['structuredContent'] as Map;
+    expect(data['total_count'], 7);
+    expect(data['next_offset'], 4);
+    expect((data['jobs'] as List).map((j) => j['id']), page.map((j) => j.id));
+    expect(await jobs.watchJobs(view: 'inbox', offset: 20).first, isEmpty);
+    expect((await jobs.getJob(all.last.id))!.id, all.last.id);
+  });
+
+  test(
+    'interview navigation and independent filters share MCP matching',
+    () async {
+      final active = await addJob(
+        'active',
+        status: ApplicationStatus.interviewing,
+        review: ReviewState.approved,
+      );
+      await addJob(
+        'ended',
+        status: ApplicationStatus.interviewing,
+        outcome: ApplicationOutcome.rejected,
+      );
+      await addJob('applied', status: ApplicationStatus.applied);
+      Future<Map> search(Map<String, Object?> args) async =>
+          ((await rpc(db, 'tools/call', {
+                    'name': 'jobs_search',
+                    'arguments': args,
+                  }))['result']
+                  as Map)['structuredContent']
+              as Map;
+      final interviews = await search({'view': 'interviewing'});
+      expect((interviews['jobs'] as List).map((j) => j['id']), [active]);
+      final allInterviews = await search({
+        'application_status': 'interviewing',
+      });
+      expect(allInterviews['total_count'], 2);
+      final narrowed = await search({
+        'view': 'all',
+        'application_status': 'interviewing',
+        'application_outcome': 'active',
+        'review_state': 'approved',
+        'query': 'active',
+        'limit': 1,
+      });
+      expect((narrowed['jobs'] as List).single['id'], active);
+      expect(
+        (await search({
+          'view': 'interviewing',
+          'application_outcome': 'rejected',
+        }))['total_count'],
+        0,
+      );
+      expect((await search({'availability': 'closed'}))['total_count'], 0);
+      final invalid = await rpc(db, 'tools/call', {
+        'name': 'jobs_search',
+        'arguments': {'application_status': 'bogus'},
+      });
+      expect(invalid['error'], isNotNull);
+    },
+  );
+
   test(
     'word scores count matching fields once and outrank AI scores with stable ties',
     () async {
@@ -559,7 +640,7 @@ void main() {
           .singleWhere((tool) => tool['name'] == 'jobs_search');
       expect(((tool['inputSchema'] as Map)['properties'] as Map)['view'], {
         'type': 'string',
-        'enum': ['all', 'inbox'],
+        'enum': ['all', 'inbox', 'interviewing'],
         'default': 'all',
       });
       Future<Map> search(Map<String, Object?> arguments) async {

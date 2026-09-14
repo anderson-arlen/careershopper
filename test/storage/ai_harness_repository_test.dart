@@ -217,6 +217,7 @@ void main() {
             ),
           );
       await local.customStatement('ALTER TABLE jobs DROP COLUMN notes');
+      await local.customStatement('DROP INDEX work_order_job_kind');
       await local.customStatement(
         'ALTER TABLE ai_work_orders DROP COLUMN job_id',
       );

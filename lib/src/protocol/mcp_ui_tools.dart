@@ -428,11 +428,18 @@ class McpUiTools {
         };
       case 'ai_conversations_list':
         final rows = await harnesses
-            .watchConversations(jobId: args['job_id'] as String?)
+            .watchConversations(
+              jobId: args['job_id'] as String?,
+              limit: (args['limit'] as int? ?? 50) + 1,
+              offset: args['offset'] as int? ?? 0,
+            )
             .first;
         return {
+          'next_offset': rows.length > (args['limit'] as int? ?? 50)
+              ? (args['offset'] as int? ?? 0) + (args['limit'] as int? ?? 50)
+              : null,
           'conversations': [
-            for (final row in rows)
+            for (final row in rows.take(args['limit'] as int? ?? 50))
               {
                 'id': row.id,
                 'title': row.title,
@@ -447,12 +454,24 @@ class McpUiTools {
         final order = await (database.select(
           database.aiWorkOrders,
         )..where((row) => row.id.equals(id('conversation_id')))).getSingle();
-        final activity = await harnesses.watchActivity(order.id).first;
+        final offset = args['offset'] as int? ?? 0;
+        final limit = args['limit'] as int? ?? 100;
+        final activity = await harnesses
+            .watchActivity(order.id, limit: limit, offset: offset)
+            .first;
+        final count = database.aiActivityEntries.id.count();
+        final total =
+            (await (database.selectOnly(database.aiActivityEntries)
+                      ..addColumns([count])
+                      ..where(
+                        database.aiActivityEntries.workOrderId.equals(order.id),
+                      ))
+                    .getSingle())
+                .read(count) ??
+            0;
         final workItems = await (database.select(
           database.aiWorkItems,
         )..where((r) => r.workOrderId.equals(order.id))).get();
-        final offset = args['offset'] as int? ?? 0;
-        final limit = args['limit'] as int? ?? 100;
         return {
           'id': order.id,
           'status': order.status,
@@ -468,10 +487,13 @@ class McpUiTools {
               },
           ],
           'config_values': jsonDecode(order.configValuesJson),
-          'total': activity.length,
+          'total': total,
+          'next_offset': offset + activity.length < total
+              ? offset + activity.length
+              : null,
           'offset': offset,
           'activity': [
-            for (final row in activity.skip(offset).take(limit))
+            for (final row in activity)
               {
                 'id': row.id,
                 'role': row.role,
@@ -851,8 +873,12 @@ final uiToolDefinitions = <Map<String, Object?>>[
   ),
   _tool(
     'ai_conversations_list',
-    'Read AI activity/conversation summaries without launching any agents. Optional job_id filters to job chats and associated imports, matching batches and document work.',
-    {'job_id': _string},
+    'Read AI activity/conversation summaries without launching any agents. Use offset/limit and next_offset for database pagination. Optional job_id filters to job chats and associated imports, matching batches and document work.',
+    {
+      'job_id': _string,
+      'offset': {'type': 'integer', 'minimum': 0},
+      'limit': {'type': 'integer', 'minimum': 1, 'maximum': 500},
+    },
     [],
     read: true,
   ),

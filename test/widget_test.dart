@@ -1,3 +1,7 @@
+import 'package:careershopper/src/features/inbox/job_browser.dart';
+import 'package:careershopper/src/storage/interview_repository.dart';
+import 'package:drift/native.dart';
+import 'fixtures/interview_data.dart';
 import 'package:careershopper/src/documents/resume_content.dart';
 import 'package:careershopper/src/storage/database.dart';
 import 'dart:io';
@@ -34,6 +38,67 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('job paging exposes later rows and search covers unloaded jobs', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1080);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final jobs = _InboxQueueStore()
+      ..current = [
+        for (var i = 0; i < 65; i++)
+          _queueJob(
+            'page-$i',
+            title: 'Role $i',
+            description: i == 64 ? 'needle' : 'ordinary',
+          ),
+      ];
+    addTearDown(jobs.close);
+    await tester.pumpWidget(
+      CareerShopperApp(
+        jobs: jobs,
+        configuration: _EmptyConfigurationStore(),
+        profile: _EmptyProfileStore(),
+        templates: _EmptyDocumentTemplateStore(),
+        harnesses: _EmptyAiHarnessStore(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Load more jobs'), findsOneWidget);
+    final search = find.byKey(const ValueKey('job-list-search'));
+    await tester.enterText(search, 'needle');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    expect(find.text('Job ID: page-64'), findsOneWidget);
+    expect(find.text('Load more jobs'), findsNothing);
+    await tester.tap(find.byTooltip('Clear search'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Load more jobs'));
+    await tester.pumpAndSettle();
+    expect(find.text('Load more jobs'), findsNothing);
+    await tester.scrollUntilVisible(
+      find.text('Role 64'),
+      500,
+      scrollable: find
+          .descendant(
+            of: find
+                .descendant(
+                  of: find.byType(JobBrowser),
+                  matching: find.byType(ListView),
+                )
+                .first,
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.tap(find.text('Role 64'));
+    await tester.pumpAndSettle();
+    expect(find.text('Job ID: page-64'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   for (final page in [0, 1]) {
     testWidgets(
       'live search filters title, body, and employer on jobs page $page',
@@ -73,11 +138,11 @@ void main() {
             harnesses: _EmptyAiHarnessStore(),
           ),
         );
+        await tester.pump(const Duration(milliseconds: 300));
         await tester.pumpAndSettle();
         if (page == 1) {
-          tester
-              .widget<NavigationRail>(find.byType(NavigationRail))
-              .onDestinationSelected!(1);
+          await tester.tap(find.text('All jobs'));
+          await tester.pump(const Duration(milliseconds: 300));
           await tester.pumpAndSettle();
         }
         expect(find.text('Job ID: one'), findsOneWidget);
@@ -95,6 +160,7 @@ void main() {
           ('two', 'Data Engineer'),
         ]) {
           await tester.enterText(search, term);
+          await tester.pump(const Duration(milliseconds: 300));
           await tester.pumpAndSettle();
           expect(find.text(title), findsNWidgets(2));
           for (final other in [
@@ -106,6 +172,7 @@ void main() {
           }
         }
         await tester.enterText(search, 'Engineer PostgreSQL');
+        await tester.pump(const Duration(milliseconds: 300));
         await tester.pumpAndSettle();
         expect(find.text('Designer'), findsNothing);
         expect(
@@ -113,15 +180,19 @@ void main() {
           lessThan(tester.getTopLeft(find.text('Backend Engineer').first).dy),
         );
         await tester.enterText(search, 'no such job');
+        await tester.pump(const Duration(milliseconds: 300));
         await tester.pumpAndSettle();
         expect(find.text('No matching jobs'), findsOneWidget);
         expect(search, findsOneWidget);
         await tester.tap(find.byTooltip('Clear search'));
+        await tester.pump(const Duration(milliseconds: 300));
         await tester.pumpAndSettle();
         expect(find.text('Designer'), findsOneWidget);
         await tester.tap(find.text('Data Engineer'));
+        await tester.pump(const Duration(milliseconds: 300));
         await tester.pumpAndSettle();
         await tester.enterText(search, 'Engineer');
+        await tester.pump(const Duration(milliseconds: 300));
         await tester.pumpAndSettle();
         expect(find.text('Data Engineer'), findsNWidgets(2));
         expect(find.text('Backend Engineer'), findsOneWidget);
@@ -129,6 +200,7 @@ void main() {
         if (page == 0) {
           jobs.current = [jobs.current[1]];
           await tester.tap(find.text('Refresh'));
+          await tester.pump(const Duration(milliseconds: 300));
           await tester.pumpAndSettle();
           expect(tester.widget<TextField>(search).controller!.text, 'Engineer');
           expect(find.text('Data Engineer'), findsNWidgets(2));
@@ -198,14 +270,30 @@ void main() {
       expect(tester.widget<Text>(count).data, '4');
       expect(find.text('Job new'), findsNothing);
       expect(find.text('Job one'), findsNWidgets(2));
+      await tester.tap(find.text('All jobs'));
+      await tester.pumpAndSettle();
+      expect(find.text('All jobs'), findsOneWidget);
       await tester.tap(
         find.descendant(
           of: find.byType(NavigationRail),
-          matching: find.byIcon(Icons.work_outline),
+          matching: find.text('Interviews'),
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('All jobs'), findsNWidgets(2));
+      expect(find.text('No active interviews'), findsOneWidget);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(NavigationRail),
+          matching: find.text('Jobs'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<SegmentedButton<bool>>(find.byType(SegmentedButton<bool>))
+            .selected,
+        {true},
+      );
       jobs.update([]);
       await tester.pumpAndSettle();
       expect(tester.widget<Text>(count).data, '0');
@@ -1867,6 +1955,97 @@ void main() {
     },
   );
 
+  testWidgets(
+    'Interviews opens active jobs directly in their preparation tab',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1100));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final db = CareerShopperDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      final jobs = JobRepository(db);
+      final interviews = InterviewRepository(db);
+      await tester.runAsync(() async {
+        final id = await jobs.queueManualUrl(
+          Uri.parse('https://example.test/interview'),
+        );
+        await jobs.setApplicationStatus(
+          id,
+          ApplicationStatus.interviewing,
+          actor: 'user',
+          origin: 'test',
+        );
+        await interviews.submitPreparation(
+          id,
+          0,
+          interviewIntel(),
+          interviewBank(),
+        );
+        await jobs.queueManualUrl(Uri.parse('https://example.test/other'));
+      });
+      await tester.pumpWidget(
+        CareerShopperApp(
+          jobs: jobs,
+          configuration: _EmptyConfigurationStore(),
+          profile: _EmptyProfileStore(),
+          templates: _EmptyDocumentTemplateStore(),
+          harnesses: _EmptyAiHarnessStore(),
+          interviews: interviews,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(NavigationRail),
+          matching: find.text('Interviews'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Practice in your voice harness'), findsOneWidget);
+      expect(find.textContaining('Next: Technical interview'), findsOneWidget);
+      expect(find.text('Refresh research'), findsOneWidget);
+      expect(find.text('https://example.test/other'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets('filters narrow the current view and can be cleared', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1500, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final jobs = _InboxQueueStore()
+      ..current = [_queueJob('one'), _queueJob('two', ready: true)];
+    addTearDown(jobs.close);
+    await tester.pumpWidget(
+      CareerShopperApp(
+        jobs: jobs,
+        configuration: _EmptyConfigurationStore(),
+        profile: _EmptyProfileStore(),
+        templates: _EmptyDocumentTemplateStore(),
+        harnesses: _EmptyAiHarnessStore(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Filters'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('Review-null')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('approved').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Apply filters'));
+    await tester.pumpAndSettle();
+    expect(find.text('Job one'), findsNothing);
+    expect(find.text('Job two'), findsWidgets);
+    await tester.tap(find.text('Filters •'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Clear filters'));
+    await tester.pumpAndSettle();
+    expect(find.text('Job one'), findsWidgets);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('returning to inbox does not cache the all-jobs list', (
     tester,
   ) async {
@@ -1884,14 +2063,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    tester
-        .widget<NavigationRail>(find.byType(NavigationRail))
-        .onDestinationSelected!(1);
+    await tester.tap(find.text('All jobs'));
     await tester.pumpAndSettle();
     expect(find.text('Job outside'), findsWidgets);
-    tester
-        .widget<NavigationRail>(find.byType(NavigationRail))
-        .onDestinationSelected!(0);
+    await tester.tap(find.text('Inbox').first);
     await tester.pumpAndSettle();
     expect(find.text('Job outside'), findsNothing);
     expect(find.text('Job one'), findsWidgets);
@@ -2283,12 +2458,19 @@ class _EmptyAiHarnessStore implements AiHarnessStore {
   }) async => 'conversation';
 
   @override
-  Stream<List<AiActivityEntry>> watchActivity(String conversationId) =>
-      Stream.value(const []);
+  Stream<List<AiActivityEntry>> watchActivity(
+    String conversationId, {
+    int? limit,
+    int offset = 0,
+    bool latest = false,
+  }) => Stream.value(const []);
 
   @override
-  Stream<List<AiConversation>> watchConversations({String? jobId}) =>
-      Stream.value(const []);
+  Stream<List<AiConversation>> watchConversations({
+    String? jobId,
+    int? limit,
+    int offset = 0,
+  }) => Stream.value(const []);
 
   @override
   Stream<List<AiHarnessProfile>> watchProfiles() => Stream.value(const []);
@@ -2992,6 +3174,33 @@ class _EmptyJobStore implements JobStore {
   }) async {}
 
   @override
+  Stream<List<InboxJob>> watchJobs({
+    String view = 'all',
+    String search = '',
+    JobListFilters filters = const JobListFilters(),
+    int limit = 50,
+    int offset = 0,
+  }) => (view == 'inbox' ? watchInbox() : watchAllJobs()).map(
+    (jobs) => searchJobsByText(
+      jobs
+          .where(
+            (j) =>
+                filters.matches(j) &&
+                (view != 'interviewing' || isInterviewingJob(j)),
+          )
+          .toList(),
+      search,
+    ).map((m) => m.job).skip(offset).take(limit).toList(),
+  );
+  @override
+  Stream<int> watchJobCount({
+    String view = 'all',
+    String search = '',
+    JobListFilters filters = const JobListFilters(),
+  }) => (view == 'inbox' ? watchInbox() : watchAllJobs()).map(
+    (jobs) => jobs.length,
+  );
+  @override
   Stream<List<InboxJob>> watchAllJobs() => Stream.value(const []);
 
   @override
@@ -3079,25 +3288,33 @@ class _ContextHarnessStore extends _EmptyAiHarnessStore {
     ),
   ];
   @override
-  Stream<List<AiConversation>> watchConversations({String? jobId}) async* {
+  Stream<List<AiConversation>> watchConversations({
+    String? jobId,
+    int? limit,
+    int offset = 0,
+  }) async* {
     watchedJob = jobId;
     yield current;
     yield* changes.stream;
   }
 
   @override
-  Stream<List<AiActivityEntry>> watchActivity(String conversationId) =>
-      Stream.value([
-        AiActivityEntry(
-          id: 'entry',
-          role: 'assistant',
-          kind: 'message',
-          text: 'Prior remote assessment',
-          status: 'completed',
-          sequence: 1,
-          updatedAt: DateTime(2026),
-        ),
-      ]);
+  Stream<List<AiActivityEntry>> watchActivity(
+    String conversationId, {
+    int? limit,
+    int offset = 0,
+    bool latest = false,
+  }) => Stream.value([
+    AiActivityEntry(
+      id: 'entry',
+      role: 'assistant',
+      kind: 'message',
+      text: 'Prior remote assessment',
+      status: 'completed',
+      sequence: 1,
+      updatedAt: DateTime(2026),
+    ),
+  ]);
   @override
   Future<String> startJobConversation(
     String jobId,
@@ -3306,7 +3523,12 @@ class _StreamingTranscriptHarness extends _EmptyAiHarnessStore {
   void update(int count, {int lastLines = 3}) =>
       activity.add(entries(count, lastLines));
   @override
-  Stream<List<AiActivityEntry>> watchActivity(String conversationId) async* {
+  Stream<List<AiActivityEntry>> watchActivity(
+    String conversationId, {
+    int? limit,
+    int offset = 0,
+    bool latest = false,
+  }) async* {
     yield entries(30, 3);
     yield* activity.stream;
   }

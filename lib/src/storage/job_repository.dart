@@ -1,3 +1,5 @@
+import 'application_material_repository.dart';
+import '../domain/listing_terms.dart';
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
@@ -9,6 +11,13 @@ import '../ingestion/normalization.dart';
 import 'database.dart';
 import 'interview_repository.dart';
 import 'listing_availability_service.dart';
+
+const _nextInterviewSql =
+    r'''(SELECT s.value FROM interview_workspaces w, json_each(w.ladder_json) s
+  WHERE w.job_id = jobs.id AND json_extract(s.value, '$.status') = 'scheduled'
+    AND COALESCE(json_extract(s.value, '$.archived'), 0) = 0
+    AND julianday(json_extract(s.value, '$.scheduled_at')) IS NOT NULL
+  ORDER BY julianday(json_extract(s.value, '$.scheduled_at')), CAST(s.key AS INTEGER) LIMIT 1)''';
 
 // Shared by the actionable Inbox and statistics so their eligibility cannot drift.
 const _aiErrorSql =
@@ -27,10 +36,10 @@ const _activeApplicationSql =
     "(applications.outcome IS NULL OR applications.outcome = 'active')";
 const _readyToApplySql =
     '''(
-  jobs.review_state = 'approved' AND $_activeApplicationSql AND $_notAppliedSql
+  jobs.review_state = 'approved' AND employers.blocked_at IS NULL AND $_activeApplicationSql AND $_notAppliedSql
   AND EXISTS (SELECT 1 FROM material_sets m WHERE m.application_id = applications.id AND m.staged = 0)
   AND NOT EXISTS (SELECT 1 FROM ai_work_items i JOIN ai_work_orders o ON o.id = i.work_order_id
-    WHERE i.subject_id = jobs.id AND o.kind = 'application_materials' AND o.status = 'running')
+    WHERE i.subject_id = jobs.id AND o.kind = 'application_materials' AND o.status IN ('queued', 'running'))
 )''';
 const _inboxEligibilitySql =
     '''(
@@ -465,8 +474,10 @@ class JobRepository implements JobStore {
   ({
     JoinedSelectStatement<HasResultSet, dynamic> query,
     Expression<bool> ready,
+    Expression<bool> outdated,
     Expression<String> error,
     Expression<String> source,
+    Expression<String> nextInterview,
   })
   _jobQuery({
     required bool inboxOnly,
@@ -484,6 +495,19 @@ class JobRepository implements JobStore {
         database.aiWorkItems,
       ],
     );
+    final documentsOutdated = CustomExpression<bool>(
+      """COALESCE((SELECT ${ApplicationMaterialRepository.outdatedSql}
+        FROM material_sets JOIN profile_snapshots ON profile_snapshots.id = material_sets.profile_snapshot_id
+        WHERE material_sets.application_id = applications.id AND material_sets.staged = 0
+        ORDER BY material_sets.created_at DESC, material_sets.id DESC LIMIT 1), 0)""",
+      watchedTables: [
+        database.materialSets,
+        database.profileSnapshots,
+        database.careerFacts,
+        database.careerFactRevisions,
+        database.careerPreferences,
+      ],
+    );
     final aiError = CustomExpression<String>(
       _aiErrorSql,
       watchedTables: [database.aiWorkOrders, database.aiWorkItems],
@@ -493,6 +517,14 @@ class JobRepository implements JobStore {
       'FROM job_observations o WHERE o.job_id = jobs.id '
       "ORDER BY o.observed_at, o.rowid LIMIT 1), 'unknown')",
       watchedTables: [database.jobObservations],
+    );
+    final nextInterview = CustomExpression<String>(
+      _nextInterviewSql,
+      watchedTables: [database.interviewWorkspaces],
+    );
+    final interviewTime = CustomExpression<double>(
+      "julianday(json_extract($_nextInterviewSql, '\$.scheduled_at'))",
+      watchedTables: [database.interviewWorkspaces],
     );
     final query = countOnly
         ? database.selectOnly(database.jobs)
@@ -520,7 +552,15 @@ class JobRepository implements JobStore {
       ),
     ]);
 
-    if (!countOnly) query.addColumns([readyToApply, aiError, sourceFamily]);
+    if (!countOnly) {
+      query.addColumns([
+        readyToApply,
+        documentsOutdated,
+        aiError,
+        sourceFamily,
+        nextInterview,
+      ]);
+    }
     if (jobId != null) query.where(database.jobs.id.equals(jobId));
     if (interviewing) {
       query.where(
@@ -593,6 +633,10 @@ class JobRepository implements JobStore {
     }
     if (!countOnly) {
       query.orderBy([
+        if (interviewing) ...[
+          OrderingTerm.asc(interviewTime.isNull()),
+          OrderingTerm.asc(interviewTime),
+        ],
         if (words.isNotEmpty) OrderingTerm.desc(score),
         if (inboxOnly) OrderingTerm.desc(aiError.isNotNull()),
         if (inboxOnly) OrderingTerm.desc(database.jobEvaluations.overallScore),
@@ -604,8 +648,10 @@ class JobRepository implements JobStore {
     return (
       query: query,
       ready: readyToApply,
+      outdated: documentsOutdated,
       error: aiError,
       source: sourceFamily,
+      nextInterview: nextInterview,
     );
   }
 
@@ -658,7 +704,8 @@ class JobRepository implements JobStore {
     JobListFilters filters = const JobListFilters(),
     int? limit,
     int offset = 0,
-  }) {
+  }) async* {
+    await InterviewRepository(database).completeScheduledStages();
     final parts = _jobQuery(
       inboxOnly: inboxOnly,
       jobId: jobId,
@@ -671,7 +718,7 @@ class JobRepository implements JobStore {
         aiError = parts.error,
         sourceFamily = parts.source;
     if (limit != null) query.limit(limit, offset: offset);
-    return query.watch().map(
+    yield* query.watch().map(
       (rows) => rows
           .map((row) {
             final job = row.readTable(database.jobs);
@@ -681,6 +728,10 @@ class JobRepository implements JobStore {
             final application = row.readTableOrNull(database.applications);
             return InboxJob(
               id: job.id,
+              nextInterviewStage: row.read(parts.nextInterview) == null
+                  ? null
+                  : (jsonDecode(row.read(parts.nextInterview)!) as Map)
+                        .cast<String, Object?>(),
               sourceFamily: row.read(sourceFamily) ?? 'unknown',
               employerId: employer?.id,
               employerLogoPng: employer?.logoPng,
@@ -689,6 +740,8 @@ class JobRepository implements JobStore {
               employerName: employer?.displayName ?? 'Employer not identified',
               location: snapshot.location,
               description: snapshot.description,
+              employmentType: formatEmploymentType(snapshot.employmentType),
+              compensationText: compensationFromJson(snapshot.compensationJson),
               applicationUrl: snapshot.applicationUrl == null
                   ? null
                   : Uri.tryParse(snapshot.applicationUrl!),
@@ -703,7 +756,18 @@ class JobRepository implements JobStore {
               personalFitScore: evaluation?.personalFitScore,
               attainabilityScore: evaluation?.attainabilityScore,
               evaluationSummary: evaluation?.summary,
+              unmetRequirements: evaluation == null
+                  ? const []
+                  : [
+                      for (final item
+                          in (jsonDecode(evaluation.dimensionsJson)
+                                      as Map)['unmet_requirements']
+                                  as List? ??
+                              [])
+                        Map<String, Object?>.from(item as Map),
+                    ],
               readyToApply: row.read(readyToApply) ?? false,
+              documentsOutdated: row.read(parts.outdated) ?? false,
               aiError: row.read(aiError),
               applicationOutcome: applicationOutcomeFromStorage(
                 application?.outcome ?? 'active',
@@ -864,6 +928,7 @@ ORDER BY j.first_seen_at, j.id
               descriptionHash: listing.contentHash,
               applicationUrl: Value(listing.applicationUrl?.toString()),
               compensationJson: Value(_compensationJson(listing)),
+              employmentType: Value(listing.employmentType),
               capturedAt: listing.observedAt,
             ),
           );
@@ -1166,9 +1231,14 @@ ORDER BY j.first_seen_at, j.id
       database.jobSnapshots,
     )..where((row) => row.id.equals(job.currentSnapshotId!))).getSingle();
     var currentSnapshotId = snapshot.id;
+    final compensation =
+        _compensationJson(listing) ?? snapshot.compensationJson;
+    final employmentType = listing.employmentType ?? snapshot.employmentType;
     if (snapshot.descriptionHash != listing.contentHash ||
         snapshot.title != listing.title ||
-        snapshot.location != listing.location) {
+        snapshot.location != listing.location ||
+        snapshot.compensationJson != compensation ||
+        snapshot.employmentType != employmentType) {
       currentSnapshotId = _uuid.v7();
       await database
           .into(database.jobSnapshots)
@@ -1183,7 +1253,8 @@ ORDER BY j.first_seen_at, j.id
               description: Value(listing.description),
               descriptionHash: listing.contentHash,
               applicationUrl: Value(listing.applicationUrl?.toString()),
-              compensationJson: Value(_compensationJson(listing)),
+              compensationJson: Value(compensation),
+              employmentType: Value(employmentType),
               capturedAt: listing.observedAt,
             ),
           );
@@ -1231,13 +1302,15 @@ ORDER BY j.first_seen_at, j.id
   String? _compensationJson(NormalizedListing listing) {
     if (listing.compensationMinimum == null &&
         listing.compensationMaximum == null &&
-        listing.compensationCurrency == null) {
+        listing.compensationCurrency == null &&
+        listing.compensationText == null) {
       return null;
     }
     return jsonEncode({
       'minimum': listing.compensationMinimum,
       'maximum': listing.compensationMaximum,
       'currency': listing.compensationCurrency,
+      if (listing.compensationText != null) 'text': listing.compensationText,
     });
   }
 

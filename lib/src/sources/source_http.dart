@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:html/parser.dart' as html;
@@ -126,8 +127,14 @@ Duration? _retryAfter(String? value) {
   if (value == null) return null;
   final seconds = int.tryParse(value.trim());
   if (seconds != null && seconds >= 0) return Duration(seconds: seconds);
-  final date = DateTime.tryParse(value)?.toUtc();
-  if (date == null) return null;
+  DateTime? date = DateTime.tryParse(value)?.toUtc();
+  if (date == null) {
+    try {
+      date = HttpDate.parse(value).toUtc();
+    } on FormatException {
+      return null;
+    }
+  }
   final delay = date.difference(DateTime.now().toUtc());
   return delay.isNegative ? Duration.zero : delay;
 }

@@ -70,6 +70,397 @@ void main() {
   tearDown(() => db.close());
 
   test(
+    'profile edits flag saved documents and Apply requires an optional override',
+    () async {
+      await jobs.setReviewState(
+        jobId,
+        ReviewState.approved,
+        actor: 'user',
+        origin: 'test',
+      );
+      final draft = await materials.save(
+        jobId: jobId,
+        resume: markdown,
+        coverLetter: markdown,
+      );
+      final saved = await materials.get(draft);
+      final baseline = await (db.select(
+        db.profileSnapshots,
+      )..where((r) => r.id.equals(saved.profileSnapshotId))).getSingle();
+      final legacyManifest =
+          jsonDecode(baseline.manifestJson) as Map<String, dynamic>;
+      legacyManifest.remove('document_preferences');
+      await (db.update(
+        db.profileSnapshots,
+      )..where((r) => r.id.equals(baseline.id))).write(
+        ProfileSnapshotsCompanion(
+          manifestJson: Value(jsonEncode(legacyManifest)),
+        ),
+      );
+      expect((await materials.watch(jobId).first)!.outdated, false);
+      expect((await jobs.getJob(jobId))!.documentsOutdated, false);
+      final documentChanged = materials
+          .watch(jobId)
+          .firstWhere((m) => m?.outdated == true);
+      final listChanged = jobs.watchAllJobs().firstWhere(
+        (rows) => rows.single.documentsOutdated,
+      );
+      final current = (await ProfileRepository(
+        db,
+      ).watchCareerFacts().first).single;
+      await ProfileRepository(db).saveCareerFact(
+        CareerFactDraft(
+          id: current.id,
+          expectedRevisionId: current.revisionId,
+          kind: resumeContentKind,
+          visibility: 'resume',
+          value: {
+            ...(current.value as Map).cast<String, dynamic>(),
+            'header': {
+              'name': 'Alex Example',
+              'headline': 'Platform engineer',
+              'contact': '',
+            },
+          },
+        ),
+        actor: 'user',
+      );
+      expect(
+        (await documentChanged.timeout(const Duration(seconds: 5)))!.id,
+        draft,
+      );
+      expect(
+        (await listChanged.timeout(
+          const Duration(seconds: 5),
+        )).single.documentsOutdated,
+        true,
+      );
+      expect((await materials.watch(jobId).first)!.resume, markdown);
+      expect(await db.select(db.materialSets).get(), hasLength(1));
+      expect(await db.select(db.aiWorkOrders).get(), isEmpty);
+      await expectLater(
+        materials.validate(markdown, markdown),
+        throwsStateError,
+      );
+
+      final output = await Directory.systemTemp.createTemp(
+        'careershopper-outdated-',
+      );
+      addTearDown(() => output.delete(recursive: true));
+      final folder = Directory('${output.path}/Documents/CareerShopper');
+      await folder.create(recursive: true);
+      final retainedFile = File('${folder.path}/keep-until-confirmed.txt');
+      await retainedFile.writeAsString('keep');
+      final opened = <Uri>[];
+      final tools = McpUiTools(
+        db,
+        harnesses: _harness(db, exporter: ApplicationExporter(output)),
+        openUrl: (url) async {
+          opened.add(url);
+        },
+        renderer: (_) async => ApplicationDocumentRenderer(),
+      );
+      final fetched = await tools.call('application_materials_get', {
+        'job_id': jobId,
+      });
+      expect((fetched['materials'] as Map)['outdated'], true);
+      final jobRead = await _rpc(McpServer(db), 'job_get', {'job_id': jobId});
+      expect(
+        (((jobRead['result'] as Map)['structuredContent'] as Map)['job']
+            as Map)['documents_outdated'],
+        true,
+      );
+      final jobSearch = await _rpc(McpServer(db), 'jobs_search', {
+        'view': 'all',
+      });
+      expect(
+        ((((jobSearch['result'] as Map)['structuredContent'] as Map)['jobs']
+                    as List)
+                .single
+            as Map)['documents_outdated'],
+        true,
+      );
+
+      final args = <String, Object?>{
+        'job_id': jobId,
+        'material_set_id': draft,
+        'format': 'docx',
+        'confirmed': true,
+        'replace_output': true,
+      };
+      await expectLater(
+        tools.call('application_apply', args),
+        throwsA(isA<OutdatedApplicationDocuments>()),
+      );
+      expect(await retainedFile.exists(), true);
+      expect(opened, isEmpty);
+      final applied = await tools.call('application_apply', {
+        ...args,
+        'allow_outdated': true,
+      });
+      expect(applied['listing_opened'], true);
+      expect(opened, hasLength(1));
+      expect(
+        (await jobs.getJob(jobId))!.applicationStatus,
+        ApplicationStatus.notApplied,
+      );
+      expect((await materials.get(draft)).resumeMarkdown, markdown);
+      await jobs.setApplicationStatus(
+        jobId,
+        ApplicationStatus.applied,
+        actor: 'user',
+        origin: 'test',
+      );
+      expect((await materials.watch(jobId).first)!.outdated, false);
+      expect((await jobs.getJob(jobId))!.documentsOutdated, false);
+    },
+  );
+
+  test(
+    'preference freshness compares values and clears for newly saved documents',
+    () async {
+      final profile = ProfileRepository(db);
+      final preferenceId = await profile.saveCareerPreference(
+        const CareerPreferenceDraft(
+          key: 'preferred_workplace',
+          value: 'Remote',
+        ),
+      );
+      await jobs.setReviewState(
+        jobId,
+        ReviewState.approved,
+        actor: 'user',
+        origin: 'test',
+      );
+      await materials.save(
+        jobId: jobId,
+        resume: markdown,
+        coverLetter: markdown,
+      );
+      await profile.saveCareerPreference(
+        CareerPreferenceDraft(
+          id: preferenceId,
+          key: 'preferred_workplace',
+          value: 'Remote',
+        ),
+      );
+      expect((await materials.watch(jobId).first)!.outdated, false);
+      await profile.saveCareerPreference(
+        CareerPreferenceDraft(
+          id: preferenceId,
+          key: 'preferred_workplace',
+          value: 'Hybrid',
+        ),
+      );
+      expect((await materials.watch(jobId).first)!.outdated, true);
+      await materials.save(
+        jobId: jobId,
+        resume: markdown,
+        coverLetter: markdown,
+      );
+      expect((await materials.watch(jobId).first)!.outdated, false);
+      await profile.deleteCareerPreference(preferenceId);
+      expect((await materials.watch(jobId).first)!.outdated, true);
+    },
+  );
+
+  test('bulk regeneration cannot publish after the user applies', () async {
+    await jobs.setReviewState(
+      jobId,
+      ReviewState.approved,
+      actor: 'user',
+      origin: 'test',
+    );
+    final previous = await materials.save(
+      jobId: jobId,
+      resume: markdown,
+      coverLetter: markdown,
+    );
+    final now = DateTime.now().toUtc();
+    await db
+        .into(db.aiWorkOrders)
+        .insert(
+          AiWorkOrdersCompanion.insert(
+            id: 'bulk-publish',
+            kind: 'application_materials',
+            status: 'running',
+            scopeJson: jsonEncode({
+              'job_ids': [jobId],
+              'require_unapplied': true,
+            }),
+            promptVersion: 'test',
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+    await db
+        .into(db.aiWorkItems)
+        .insert(
+          AiWorkItemsCompanion.insert(
+            id: 'bulk-item',
+            workOrderId: 'bulk-publish',
+            subjectId: jobId,
+            status: 'submitted',
+            idempotencyKey: 'bulk-item',
+            updatedAt: now,
+          ),
+        );
+    await materials.save(
+      jobId: jobId,
+      resume: _completeMarkdown(markdown),
+      coverLetter: _completeMarkdown(markdown),
+      workOrderId: 'bulk-publish',
+      staged: true,
+      reviewed: true,
+    );
+    await jobs.setApplicationStatus(
+      jobId,
+      ApplicationStatus.applied,
+      actor: 'user',
+      origin: 'test',
+    );
+    await expectLater(
+      materials.publishGeneration('bulk-publish'),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('The job changed during generation'),
+        ),
+      ),
+    );
+    expect((await materials.watch(jobId).first)!.id, previous);
+  });
+
+  test(
+    'bulk regeneration queues distinct unapplied drafts and processes them serially with current evidence',
+    () async {
+      Future<String> ready(String provider) async {
+        final id = (await jobs.ingest(
+          NormalizedListing(
+            sourceFamily: 'test',
+            adapterId: 'test',
+            providerJobId: provider,
+            title: 'Engineer $provider',
+            employerName: 'Example',
+            normalizedEmployerName: 'example',
+            location: 'Remote',
+            description: 'Build systems.',
+            contentHash: contentHash('Build systems. $provider'),
+            sourceUrl: Uri.parse('https://example.test/$provider'),
+            applicationUrl: Uri.parse('https://example.test/$provider'),
+            observedAt: DateTime.now(),
+          ),
+        )).jobId;
+        await jobs.setReviewState(
+          id,
+          ReviewState.approved,
+          actor: 'user',
+          origin: 'test',
+        );
+        await materials.save(
+          jobId: id,
+          resume: markdown,
+          coverLetter: markdown,
+        );
+        return id;
+      }
+
+      final first = await ready('bulk-1'),
+          second = await ready('bulk-2'),
+          later = await ready('bulk-3'),
+          applied = await ready('applied');
+      await jobs.setApplicationStatus(
+        applied,
+        ApplicationStatus.applied,
+        actor: 'user',
+        origin: 'test',
+      );
+      final requests = <AcpRunRequest>[];
+      final holds = [Completer<void>(), Completer<void>()];
+      final started = [Completer<void>(), Completer<void>()];
+      final harness = _harness(
+        db,
+        runner: _WorkflowRunner((request) async {
+          final index = requests.length;
+          requests.add(request);
+          started[index].complete();
+          await holds[index].future;
+        }),
+      );
+      await harness.saveProfile(
+        const AiHarnessProfileDraft(
+          name: 'Writer',
+          executable: '/bin/true',
+          arguments: [],
+        ),
+      );
+      final original = (await materials.watch(first).first)!.id;
+      final result = await harness.regenerateApplications([
+        first,
+        second,
+        later,
+        applied,
+        jobId,
+        first,
+      ]);
+      expect(result.queued, [first, second, later]);
+      expect(result.errors.keys, unorderedEquals([applied, jobId]));
+      await started.first.future;
+      expect(requests, hasLength(1));
+      expect(await harness.watchMaterialStatus(second).first, 'queued');
+      expect((await jobs.getJob(second))!.canRegenerateDocuments, isFalse);
+      expect((await materials.watch(first).first)!.id, original);
+      // A queued job must be rechecked if the user applies while another is running.
+      await jobs.setApplicationStatus(
+        later,
+        ApplicationStatus.applied,
+        actor: 'user',
+        origin: 'test',
+      );
+      final profile = ProfileRepository(db);
+      final fact = (await profile.watchCareerFacts().first).single;
+      await profile.saveCareerFact(
+        CareerFactDraft(
+          id: fact.id,
+          expectedRevisionId: fact.revisionId,
+          kind: resumeContentKind,
+          value: {
+            ...ResumeContent.empty(),
+            'header': {'name': 'Updated Applicant', 'contact': ''},
+          },
+          visibility: 'resume',
+        ),
+        actor: 'user',
+      );
+      holds.first.complete();
+      await started[1].future;
+      expect(requests[1].prompt, contains('Updated Applicant'));
+      holds[1].complete();
+      await harness.watchMaterialStatus(later).firstWhere((s) => s == 'failed');
+      await pumpEventQueue();
+      expect(requests, hasLength(2));
+      expect((await materials.watch(first).first)!.id, original);
+      // Reopening starts a persisted queued request without needing the selection UI.
+      final order = await (db.select(
+        db.aiWorkOrders,
+      )..where((r) => r.status.equals('failed'))).get();
+      final firstOrder = order.firstWhere((r) => r.title.contains('bulk-1'));
+      await (db.update(db.aiWorkOrders)
+            ..where((r) => r.id.equals(firstOrder.id)))
+          .write(const AiWorkOrdersCompanion(status: Value('queued')));
+      final reopenedRunner = _Runner();
+      final reopened = _harness(db, runner: reopenedRunner);
+      final draining = reopened.resumeQueuedMaterialGeneration();
+      await reopenedRunner.started.future;
+      expect(reopenedRunner.request!.prompt, contains('Updated Applicant'));
+      reopenedRunner.finished.complete();
+      await draining;
+      expect(await reopened.watchMaterialStatus(first).first, 'failed');
+    },
+  );
+
+  test(
     'structured short-ID plans submit both complete documents without Markdown repair',
     () async {
       final profile = ProfileRepository(db);
@@ -518,10 +909,14 @@ void main() {
         expect(after.applicationStatus, before.applicationStatus);
         expect((await materials.get(draft)).reviewedAt, isNull);
         await ProfileRepository(db).retireCareerFact(factId, actor: 'user');
-        await expectLater(
-          tools.call('application_documents_export', args),
-          throwsStateError,
+        expect(
+          (await tools.call(
+            'application_documents_export',
+            args,
+          ))['output_directory'],
+          directory,
         );
+        expect((await materials.watch(jobId).first)!.outdated, true);
       },
     );
   }
@@ -612,7 +1007,7 @@ void main() {
   );
 
   test(
-    'Apply accepts unreviewed drafts but refuses superseded or outdated drafts',
+    'Export accepts saved historical evidence but refuses superseded drafts',
     () async {
       await jobs.setReviewState(
         jobId,
@@ -648,7 +1043,8 @@ void main() {
       );
       await expectLater(export(original), throwsStateError);
       await ProfileRepository(db).retireCareerFact(factId, actor: 'user');
-      await expectLater(export(reviewed), throwsStateError);
+      expect(await export(reviewed), path);
+      expect((await materials.watch(jobId).first)!.outdated, true);
     },
   );
 

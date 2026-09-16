@@ -71,7 +71,7 @@ void main() {
         (await db.customSelect('PRAGMA user_version').getSingle()).read<int>(
           'user_version',
         ),
-        19,
+        db.schemaVersion,
       );
       for (final query in [
         "SELECT * FROM job_observations WHERE job_id='job' ORDER BY observed_at,rowid LIMIT 1",

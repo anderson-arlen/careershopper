@@ -148,8 +148,16 @@ The fetch itself does not change the saved description, evaluation, review, or
 application state. It records retrieval diagnostics and provider blocks locally.
 The tool requires `confirmed: true`, enforces job scope, and permits scoped
 retrieval only for import/search work orders. Complete search descriptions still
-skip retrieval. Explicit access denial, authentication, CAPTCHA, or rate limits
-stop requests to that host until the user clears the saved block. Block checks
+skip retrieval. Explicit access denial, authentication, or CAPTCHA stops requests
+to that host until the user clears the saved block. HTTP 429 instead persists a
+host-wide cooldown using Retry-After (seconds or HTTP date), or one hour when
+absent/invalid. `job_posting_fetch` returns `blocked: true` and `retry_at` during
+that cooldown: end the retrieval turn rather than retrying or switching tools.
+The desktop retains the search work item as queued and resumes the same search
+conversation after the deadline, including after reopening. The activity shows
+the retry time, also readable through `ai_conversation_get`. Other searches may
+continue while it waits. Previously saved 429-only blocks expire one hour after
+the recorded response; actual access denials remain blocked. Block checks
 are shared with listing availability checks; a generic retrieval failure does
 not itself establish a block. No JavaScript execution or browser cookies are used.
 Initial and resumed import/search ACP turns and MCP descriptions distinguish
@@ -222,7 +230,8 @@ host/UI responsibility. The sole exception is `application_answer_generate`: a
 typed essay-question operation using the existing default ACP model/settings,
 shared writing style, and confirmed profile. It accepts no job ID, model override,
 command, or general prompt. It returns an answer or a structured error without
-saving answer history. The restricted writer MCP exposes only health and confirmed
+automatically saving answer history. Separate local answer-save/read tools do not
+invoke ACP. The restricted writer MCP exposes only health and confirmed
 non-private profile reads, rejects other calls/resources, and cannot invoke
 generation recursively. An inherited writer flag and a cross-process lock also
 guard against calls through another CareerShopper MCP instance. This does not
@@ -233,7 +242,15 @@ automation.
 
 Statistics defaults to All time. Today, This month and This year select jobs by
 their last state-change date. The page stays aligned to the top even in tall windows.
-The funnel appears above the Sankey; both update together.
+Two prominent cards above the funnel show Jobs found per application (found / applied)
+and Applications per interview (applied / interviewed). Each card shows only its
+label and value, rounded to one decimal without trailing .0, with no ratio suffix
+or calculation subtitle. A zero denominator displays an em dash.
+`statistics_get.conversion_ratios` exposes the same unrounded values as
+`jobs_found_per_application` and `applications_per_interview` (numbers, or null
+when the respective denominator is zero). Interviews count distinct jobs reaching
+interviews, not interview rounds or mock sessions. The cards, funnel and Sankey
+update together with the date filter; the funnel appears above the Sankey.
 Sankey input nodes group jobs by their first observation source family (Manual
 entry, Indeed, etc.) and merge into Jobs found. Timestamp ties use observation
 insertion order; jobs without source observations use Unknown source. Later
@@ -376,7 +393,8 @@ tabs. The document-readiness indicator links to document review. MCP already
 exposes the same saved drafts, reviewed flag and generation status through
 `application_materials_get`; the header uses these same states. Unsaved editor
 changes are UI-local and disable Apply and Export documents until saved/reverted. Export still checks
-current facts, listing snapshot, latest draft, and employer approval. Review is
+original confirmed fact revisions, listing snapshot, latest draft, and employer approval.
+Profile edits flag unapplied documents as out of date; Apply allows reuse after confirmation. Review is
 optional: generated saved drafts enable Apply through both UI and MCP without
 marking them reviewed or requiring a review step.
 
@@ -542,9 +560,10 @@ models to reproduce UUIDs. The work order stores the immutable mapping in its
 existing scope JSON. Scoped `profile_get` exposes the same references. Material
 validation/submission resolves only facts comments and still requires the mapped
 revision to be current, confirmed, and disclosable. Saved documents contain the
-canonical revision IDs, so editing, exports and claim provenance use the existing
-shared repository unchanged. Unknown or stale references fail validation; no
-fuzzy citation repair or inferred factual support occurs.
+canonical revision IDs. New generation and edits reject unknown or stale references;
+export of an existing saved pair retains its original confirmed evidence, with
+optional reuse after a profile-change warning when applying. No fuzzy citation
+repair or inferred factual support occurs.
 
 Draft edits accept an explicit `replace_all` boolean for repeated literal text.
 The default still requires exactly one match. Failures identify the edit number,
@@ -559,7 +578,8 @@ read-only diagnostics; it is not an obligatory extra agent round trip.
 ### Employer attribution in generated and edited materials
 
 The shared material repository checks employer attribution in both desktop saves
-and MCP validation/submission/export. A paragraph naming an employer, or a bullet
+and MCP validation/submission. Saved exports retain the evidence and attribution
+validated when the document was saved. A paragraph naming an employer, or a bullet
 under an employer work-history heading, cannot cite an achievement belonging to
 another employer without explicitly naming that employer. Direct employment
 links take precedence; shared technology skills do not transfer achievements
@@ -577,7 +597,15 @@ and preserving causal direction still require the writer's factual check. No new
 AI turn is added, and user writing-style files and stored documents are untouched.
 
 The initial writer and post-review writer also select evidence by relevance to
-the stated role. Profile context links do not require including linked facts
+the stated role. Before the first draft, the writer states a brief evidence plan
+in the existing activity conversation: the employer's core problem, the strongest
+direct accomplishment and its short evidence IDs, and why it beats the best
+alternative. Direct work anchors the opening when available; personal context
+is included only for specific domain/user familiarity, without displacing that
+evidence. This adds no separate AI turn or submission requirement. MCP harnesses
+follow the same selection workflow through the bundled skill; saved ACP activity
+remains readable through `ai_conversation_get`.
+Profile context links do not require including linked facts
 together. Broad ownership retains its scope; implementation examples need a
 distinct reason to appear, and relevant technical depth should use the supported
 design and behavior rather than a generic tooling label. These are writer
@@ -1152,8 +1180,9 @@ materials and interview history; it preserves all saved records.
 
 UI setup defaults to the current stage and automatic difficulty; MCP
 interview_practice_start uses those same defaults when stage_id and
-settings.difficulty are omitted. interview_get.current_stage exposes the first
-non-archived planned/scheduled stage in ladder order. A completed practice never
+settings.difficulty are omitted. interview_get.current_stage exposes the earliest
+ongoing or upcoming scheduled stage, falling back to the first non-archived
+unfinished stage in ladder order. A completed practice never
 advances the real ladder; no current stage produces an actionable error rather
 than silently revisiting a finished stage. Explicit stage IDs still allow revisits.
 
@@ -1206,3 +1235,153 @@ whether the applicant wants more time, while keeping the same question pending.
 It respects requested thinking time and does not assume that text-only harnesses
 expose silence, timing or continuous audio. This is skill guidance, not a new
 CareerShopper audio detector or timer.
+
+### Employer AI-disclosure requests
+
+The application workflow skill and both ACP writing prompts omit AI-assistance
+notices requested only by employer listing/form text. A user can explicitly
+request disclosure. The rule does not authorize invented no-AI authorship claims
+or alteration of saved source text. UI document generation and MCP answer drafting
+share this behavior through their existing writing services; no schema change or
+new action is introduced.
+
+### Stable job browsing and bulk document regeneration
+
+Search remains mounted while a new page loads, preserving focus and text selection.
+Inbox/All jobs share search and filter state; changing view invalidates only the
+result page. Older asynchronous inbox reads cannot replace a newer query. Empty
+filtered results point to the search/filter controls rather than suggesting that
+all retained jobs disappeared.
+
+Jobs > Select jobs allows individual selection or all eligible loaded rows, retained
+across searches and pagination. Regenerate selected documents queues fresh resume
+and cover-letter pairs using current Resume content, without opening each job.
+Eligibility is shared through InboxJob.canRegenerateDocuments and the additive
+can_regenerate_documents field in job_get/jobs_search: approved, active, unapplied,
+saved documents, not closed or blocked, and no queued/running document writer.
+
+The desktop rechecks each selection and persists ordinary application-materials
+work orders before processing one at a time. Startup drains queued work. Each
+writer reads current evidence when it starts. A job applied while waiting is
+skipped; a bulk draft cannot replace active documents after the application
+progresses. Existing documents survive failed generation. No schema migration is
+needed: the queue uses existing work-order status and scope fields.
+
+MCP exposes the same candidate reads and document updates through existing
+application_materials_get/update and confirmed Resume content. As with single-job
+regeneration, the connected harness drafts the new pair; it does not launch ACP
+through MCP. The skill documents the bulk workflow. Regression tests cover search
+focus/selection, filters across view switches, selection across searches, queue
+eligibility/deduplication, sequential dispatch, changed profile evidence, changed
+application status, persisted queue restart and retained prior drafts.
+
+Job profiles show compensation and employment type prominently above application actions and tabs. `job_get` and `jobs_search` expose the same saved values as `compensation_text` and `employment_type` (null when unavailable). `job_import_submit` accepts these optional fields from the posting, including the stated currency and pay period; neither surface estimates missing terms. Existing retained source responses are used to recover employment types and Indeed pay periods locally during the database upgrade. Hourly display does not change annual salary search filtering.
+
+### Optional document refresh after profile edits
+
+Editing the profile does not regenerate or invalidate existing saved document
+pairs. Unapplied jobs show a **Documents out of date** indicator in the job list,
+job actions and document panel. `job_get`/`jobs_search` expose
+`documents_outdated`; `application_materials_get` returns `materials.outdated`.
+Both are computed by the same service query, comparing cited Resume revisions
+and saved preference values against the current profile. Reads react to profile
+edits. For older documents without a preference baseline, preference changes
+newer than the saved pair are detected by update time. Applied and later stages
+are not flagged. Saving a new valid pair establishes a new baseline.
+
+Apply rechecks freshness before touching exported files or opening the browser.
+The desktop confirmation offers **Cancel** or **Apply anyway**. The MCP equivalent
+is `application_apply` with `allow_outdated=true`, only after the user chooses to
+use that saved pair despite profile changes. Canceling leaves files, documents
+and status alone. Export without applying remains available without this extra
+confirmation. Neither path regenerates documents. Historical saved documents
+are validated against their original confirmed fact revisions; new generation
+and document edits still require current confirmed, disclosable evidence.
+
+The active Jobs navigation item refreshes the current page while preserving its
+Inbox/All jobs view, search, filters, loaded page size and selected job. This is
+the same read exposed by `jobs_search`; it does not rerun a saved search or launch
+AI. Refresh still defers while documents have unsaved edits or an export is in
+progress. Filters sit beside the view selector, and Add listing remains in the
+main navigation. The chat composer uses one circular action: Send (play icon)
+when text or attachments are present, Stop when the agent is running with empty
+input, and disabled Send when idle with empty input. Enter still sends content;
+empty Enter does not interrupt. These are harness controls, with no new MCP
+launch or messaging surface.
+
+Search evaluation scope errors identify the submitted and current job IDs when
+an agent accidentally reuses the previous assignment. The write remains rejected;
+the agent can read and evaluate the correct job without restarting the search.
+
+Interview scheduling uses the existing `interview_stages_save` ladder contract.
+The Interviews overview shows a clickable stage flow with completed, scheduled,
+planned, skipped and cancelled states. Each stage opens date/time pickers, duration
+and status controls; times are saved in UTC and displayed in computer local time.
+`interview_get` exposes the same ladder, `current_stage`, and `next_scheduled_stage`.
+The current stage prioritizes the earliest upcoming/ongoing appointment, then the
+first unfinished ladder stage. `jobs_search` and `job_get` expose `next_interview`;
+Interviews list dates prominently and sort scheduled jobs chronologically before
+unscheduled jobs and text relevance, in SQL before pagination.
+
+Scheduled stages automatically become completed after start plus duration. The
+shared service reconciles elapsed appointments on reads and on the desktop's
+existing interview monitor, including at startup even with AI preparation off.
+This records elapsed schedule time, not attendance, and does not change the
+application outcome or delete practice history. Manual planned, completed, skipped,
+cancelled and archived stages are preserved. Workspace revisions and audit events
+record automatic transitions; stale stage edits must reload before saving.
+
+
+### Saved application answers
+
+Application documents → Application answers lets users save, review, copy, and
+edit question/answer pairs for any saved job, without requiring approval or
+material generation. `application_answers_list(job_id)` exposes the same text,
+status, revision, and timestamps. `application_answer_save` takes `job_id`, a
+stable `answer_id`, `expected_revision` (0 for creation), `question`, `answer`,
+`status` (`draft` or `submitted`), and `confirmed:true`. Both surfaces use
+ApplicationAnswerRepository; edits require the current revision and cannot move
+an answer between jobs. Text is preserved verbatim, including paragraph breaks.
+
+Saving requires a user request to keep answers. Submitted status requires the
+user to confirm the exact text was submitted. Saving or changing this status
+never applies to the job, changes application state, or confirms career facts.
+These records can contain user-written text as well as selected generated prose;
+they are not evidence for future resume claims. The read-only answer writer and
+scoped work-order agents cannot save answers. Interview preparation reads submitted
+answers through its existing scoped interview_get application context. New practice
+sessions snapshot them with the rest of the application context; existing sessions
+retain their original context. Drafts are excluded from that submitted context.
+
+`application_answer_generate` still returns a grounded answer without saving it.
+It uses the shared writing voice while keeping the response specific to the form
+question. Simple motivation questions default to about 60–100 words in one short
+paragraph (less when sufficient), not a cover letter or career overview. Behavioral
+or multi-part questions may need more detail; explicit length limits remain ceilings.
+No new ACP launch control, external form interaction, or automatic submission exists.
+
+Schema 21 adds the application_answers table and its job/creation-time index.
+Behavior tests cover exact text round trips, edit conflicts, scope and job
+isolation, draft/submitted attribution, interview context, migration, and UI saving.
+
+
+### Mandatory qualification eligibility
+
+`job_evaluation_submit` requires `unmet_requirements`, an array of confirmed unmet
+mandatory qualifications (explicitly empty when none). Each entry contains
+`requirement`, `posting_evidence`, `applicant_evidence`, and `fact_revision_ids`.
+The shared validation verifies structure, an exact saved title/description quote
+(ignoring whitespace differences), and current confirmed matching-evidence IDs.
+The evaluating agent determines whether a qualification is mandatory and actually
+unmet: a preferred degree is not a blocker, an explicitly allowed experience
+alternative must be assessed, and missing applicant information remains unknown.
+
+Any confirmed blocker prevents automatic Inbox placement, independently of the
+60/40 weighted score and search threshold. The job remains in All jobs with the
+existing AI-rejected disposition. The job profile's Evaluation section shows the
+requirement and both sides of its evidence; `job_get` and `jobs_search` expose the
+same `unmet_requirements`. Existing dimensions JSON stores these assessments;
+legacy evaluations expose an empty list until re-evaluated. No legacy description
+is classified using a keyword filter or silently rescored. Explicit user approvals
+and discards remain unchanged, as do availability and application state. A user
+can still choose to approve a job despite a recorded qualification gap.

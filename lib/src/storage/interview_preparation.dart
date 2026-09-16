@@ -32,6 +32,7 @@ extension InterviewPreparation on AiHarnessRepository {
     _interviewPolling = true;
     try {
       final interviews = InterviewRepository(database);
+      await interviews.completeScheduledStages();
       final settings = await interviews.settings();
       if (settings['auto_prepare'] != true) {
         return;

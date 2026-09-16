@@ -38,6 +38,249 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets(
+    'expanded navigation keeps all rows aligned when Jobs gains a refresh action',
+    (tester) async {
+      tester.view.physicalSize = const Size(1500, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        CareerShopperApp(
+          jobs: _EmptyJobStore(),
+          configuration: _EmptyConfigurationStore(),
+          profile: _EmptyProfileStore(),
+          templates: _EmptyDocumentTemplateStore(),
+          harnesses: _EmptyAiHarnessStore(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final rail = find.byType(NavigationRail);
+      Finder label(String name) =>
+          find.descendant(of: rail, matching: find.text(name));
+      void checkAlignment() {
+        final left = tester.getTopLeft(label('Jobs')).dx;
+        for (final name in [
+          'Interviews',
+          'Blocked employers',
+          'Profile',
+          'Documents',
+          'Searches',
+          'Sources',
+          'AI',
+          'Statistics',
+        ]) {
+          expect(
+            tester.getTopLeft(label(name)).dx,
+            closeTo(left, 0.1),
+            reason: name,
+          );
+        }
+        final jobIcon = find.descendant(
+          of: rail,
+          matching: find.byIcon(
+            tester.widget<NavigationRail>(rail).selectedIndex == 0
+                ? Icons.work
+                : Icons.work_outline,
+          ),
+        );
+        final iconX = tester.getCenter(jobIcon).dx;
+        for (final icon in [
+          Icons.record_voice_over_outlined,
+          Icons.business_outlined,
+          Icons.badge_outlined,
+          Icons.description_outlined,
+          Icons.manage_search,
+          tester.widget<NavigationRail>(rail).selectedIndex == 6
+              ? Icons.hub
+              : Icons.hub_outlined,
+          Icons.smart_toy_outlined,
+          Icons.query_stats_outlined,
+        ]) {
+          expect(
+            tester
+                .getCenter(
+                  find.descendant(of: rail, matching: find.byIcon(icon)),
+                )
+                .dx,
+            closeTo(iconX, 0.1),
+          );
+        }
+      }
+
+      checkAlignment();
+      final width = tester.getSize(rail).width;
+      expect(width, closeTo(256, 0.1));
+      expect(
+        tester.getTopRight(find.byTooltip('Refresh jobs')).dx,
+        greaterThan(tester.getTopRight(rail).dx - 24),
+      );
+      await tester.tap(label('Sources'));
+      await tester.pumpAndSettle();
+      checkAlignment();
+      expect(tester.getSize(rail).width, width);
+      expect(find.byTooltip('Refresh jobs'), findsNothing);
+      await tester.tap(label('Jobs'));
+      await tester.pumpAndSettle();
+      checkAlignment();
+      expect(tester.getSize(rail).width, width);
+      expect(find.byTooltip('Refresh jobs'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'job terms are prominent before actions, with explicit missing values',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final jobs = _InboxQueueStore()
+        ..current = [
+          _queueJob(
+            'one',
+            compensationText: 'USD 120,000 – 150,000 · per year',
+            employmentType: 'Full-time · Contract',
+          ),
+          _queueJob('two'),
+        ];
+      addTearDown(jobs.close);
+      await tester.pumpWidget(
+        CareerShopperApp(
+          jobs: jobs,
+          configuration: _EmptyConfigurationStore(),
+          profile: _EmptyProfileStore(),
+          templates: _EmptyDocumentTemplateStore(),
+          harnesses: _EmptyAiHarnessStore(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Compensation'), findsOneWidget);
+      expect(find.text('Job type'), findsOneWidget);
+      expect(find.text('USD 120,000 – 150,000 · per year'), findsOneWidget);
+      expect(find.text('Full-time · Contract'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('Compensation')).dy,
+        lessThan(tester.getTopLeft(find.text('Open listing in browser')).dy),
+      );
+      await tester.tap(find.text('Job two'));
+      await tester.pumpAndSettle();
+      expect(find.text('Not specified'), findsNWidgets(2));
+      expect(find.text('USD 120,000 – 150,000 · per year'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('job evaluation shows mandatory qualification evidence', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final jobs = _InboxQueueStore()
+      ..current = [
+        InboxJob(
+          id: 'qualification',
+          title: 'Engineer',
+          employerName: 'Example',
+          location: 'Remote',
+          description: 'A bachelor degree is required.',
+          applicationUrl: Uri.parse('https://example.test/role'),
+          availability: JobAvailability.open,
+          reviewState: ReviewState.hiddenLowScore,
+          applicationStatus: ApplicationStatus.notApplied,
+          observedAt: DateTime.utc(2026),
+          overallScore: 88,
+          personalFitScore: 91,
+          attainabilityScore: 84,
+          unmetRequirements: const [
+            {
+              'requirement': 'Bachelor degree',
+              'posting_evidence': 'A bachelor degree is required.',
+              'applicant_evidence': 'No college degree.',
+              'fact_revision_ids': ['confirmed-education'],
+            },
+          ],
+        ),
+      ];
+    addTearDown(jobs.close);
+    await tester.pumpWidget(
+      CareerShopperApp(
+        jobs: jobs,
+        configuration: _EmptyConfigurationStore(),
+        profile: _EmptyProfileStore(),
+        templates: _EmptyDocumentTemplateStore(),
+        harnesses: _EmptyAiHarnessStore(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('All jobs'));
+    await tester.pumpAndSettle();
+    expect(find.text('Required qualifications not met'), findsOneWidget);
+    expect(
+      find.text(
+        'Bachelor degree\nListing: A bachelor degree is required.\nProfile: No college degree.',
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('bulk regeneration selects eligible documents across searches', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final jobs = _InboxQueueStore()
+      ..current = [
+        _queueJob('one', ready: true),
+        _queueJob('two', ready: true),
+        _queueJob('no-documents'),
+      ];
+    addTearDown(jobs.close);
+    final harness = _BulkHarness();
+    await tester.pumpWidget(
+      CareerShopperApp(
+        jobs: jobs,
+        configuration: _EmptyConfigurationStore(),
+        profile: _EmptyProfileStore(),
+        templates: _EmptyDocumentTemplateStore(),
+        harnesses: harness,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Select jobs'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<Checkbox>(
+            find.byWidgetPredicate(
+              (w) =>
+                  w is Checkbox && w.semanticLabel == 'Select Job no-documents',
+            ),
+          )
+          .onChanged,
+      isNull,
+    );
+    await tester.tap(
+      find.byWidgetPredicate(
+        (w) => w is Checkbox && w.semanticLabel == 'Select Job one',
+      ),
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('job-list-search')),
+      'two',
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Select eligible on this page'));
+    await tester.pump();
+    expect(find.text('2 selected'), findsOneWidget);
+    await tester.tap(find.text('Regenerate selected documents'));
+    await tester.pumpAndSettle();
+    expect(harness.regenerated, ['one', 'two']);
+    expect(find.textContaining('2 document pairs queued'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('job paging exposes later rows and search covers unloaded jobs', (
     tester,
   ) async {
@@ -68,8 +311,23 @@ void main() {
     expect(find.text('Load more jobs'), findsOneWidget);
     final search = find.byKey(const ValueKey('job-list-search'));
     await tester.enterText(search, 'needle');
+    final editable = find.descendant(
+      of: search,
+      matching: find.byType(EditableText),
+    );
+    final originalField = tester.state<EditableTextState>(editable);
+    originalField.widget.controller.selection = const TextSelection(
+      baseOffset: 1,
+      extentOffset: 4,
+    );
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
+    expect(tester.state<EditableTextState>(editable), same(originalField));
+    expect(originalField.widget.focusNode.hasFocus, isTrue);
+    expect(
+      originalField.widget.controller.selection,
+      const TextSelection(baseOffset: 1, extentOffset: 4),
+    );
     expect(find.text('Job ID: page-64'), findsOneWidget);
     expect(find.text('Load more jobs'), findsNothing);
     await tester.tap(find.byTooltip('Clear search'));
@@ -197,9 +455,14 @@ void main() {
         expect(find.text('Data Engineer'), findsNWidgets(2));
         expect(find.text('Backend Engineer'), findsOneWidget);
         expect(find.text('Designer'), findsNothing);
-        if (page == 0) {
+        {
           jobs.current = [jobs.current[1]];
-          await tester.tap(find.text('Refresh'));
+          await tester.tap(
+            find.descendant(
+              of: find.byType(NavigationRail),
+              matching: find.text('Jobs'),
+            ),
+          );
           await tester.pump(const Duration(milliseconds: 300));
           await tester.pumpAndSettle();
           expect(tester.widget<TextField>(search).controller!.text, 'Engineer');
@@ -399,17 +662,45 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 400));
         expect(find.text('Agent is working…'), findsOneWidget);
-        expect(find.text('Steer'), findsOneWidget);
+        expect(find.byTooltip('Stop'), findsOneWidget);
+        expect(find.text('Interrupt'), findsNothing);
         final input = find.byType(TextField);
         expect(tester.widget<TextField>(input).enabled, true);
+        final action = tester.getSize(find.byTooltip('Stop'));
+        expect(action, const Size(48, 48));
+        expect(
+          tester.getCenter(find.byTooltip('Stop')).dy,
+          closeTo(tester.getCenter(input).dy, 0.1),
+        );
+        final initialInputHeight = tester.getSize(input).height;
+        await tester.enterText(input, 'First line\nSecond line\nThird line');
+        await tester.pump();
+        final multiline = tester.getSize(
+          find.byTooltip('Send message to steer agent'),
+        );
+        expect(multiline, action);
+        expect(tester.getSize(input).height, greaterThan(initialInputHeight));
+        expect(
+          tester.getCenter(find.byTooltip('Send message to steer agent')).dy,
+          closeTo(tester.getCenter(input).dy, 0.1),
+        );
+
         await tester.enterText(input, 'Focus on office attendance');
+        await tester.pump();
+        expect(find.byTooltip('Stop'), findsNothing);
+        expect(find.byTooltip('Send message to steer agent'), findsOneWidget);
+        expect(find.byIcon(Icons.play_arrow), findsOneWidget);
         await tester.sendKeyEvent(LogicalKeyboardKey.enter);
         await tester.pump();
         expect(harnesses.sent, [('discussion', 'Focus on office attendance')]);
         expect(tester.widget<TextField>(input).controller!.text, isEmpty);
         harnesses.stopping = Completer<void>();
         await tester.enterText(input, 'Keep this unsent draft');
-        await tester.tap(find.text('Interrupt'));
+        await tester.pump();
+        expect(find.byTooltip('Stop'), findsNothing);
+        await tester.enterText(input, '');
+        await tester.pump();
+        await tester.tap(find.byTooltip('Stop'));
         await tester.pump();
         expect(find.text('Interrupting current turn…'), findsOneWidget);
         harnesses.stopping!.complete();
@@ -419,12 +710,17 @@ void main() {
           find.text('Interrupted. Send a message to continue.'),
           findsOneWidget,
         );
-        expect(
-          tester.widget<TextField>(input).controller!.text,
-          'Keep this unsent draft',
-        );
+        expect(tester.widget<TextField>(input).controller!.text, '');
         expect(tester.widget<TextField>(input).enabled, true);
-        expect(find.text('Steer'), findsNothing);
+        expect(find.byTooltip('Stop'), findsNothing);
+        expect(
+          tester
+              .widget<IconButton>(
+                find.widgetWithIcon(IconButton, Icons.play_arrow),
+              )
+              .onPressed,
+          isNull,
+        );
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox.shrink());
       },
@@ -495,6 +791,14 @@ void main() {
       await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
       await tester.pumpAndSettle();
       expect(find.byTooltip('Remove image 1'), findsOneWidget);
+      expect(
+        tester
+            .widget<IconButton>(
+              find.widgetWithIcon(IconButton, Icons.play_arrow),
+            )
+            .onPressed,
+        isNotNull,
+      );
       expect(find.byType(Image), findsOneWidget);
       await tester.tap(find.byTooltip('Remove image 1'));
       await tester.pumpAndSettle();
@@ -561,6 +865,64 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+
+  testWidgets('outdated Apply can cancel or continue without regenerating', (
+    tester,
+  ) async {
+    final jobs = _ApplyDecisionStore();
+    final harnesses = _HeaderExportHarness(succeed: true, outdated: true);
+    final opened = <Uri>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: JobApplicationActions(
+            job: InboxJob(
+              id: 'job',
+              title: 'Engineer',
+              employerName: 'Example',
+              location: 'Remote',
+              description: '',
+              applicationUrl: Uri.parse('https://example.test/apply'),
+              availability: JobAvailability.open,
+              reviewState: ReviewState.approved,
+              applicationStatus: ApplicationStatus.readyToApply,
+              observedAt: DateTime(2026),
+            ),
+            harnesses: harnesses,
+            repository: jobs,
+            dirty: false,
+            onBusyChanged: (_) {},
+            onChanged: () async {},
+            openUrl: (url) async {
+              opened.add(url);
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Documents out of date'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Apply'));
+    await tester.pumpAndSettle();
+    expect(find.text('Apply with out-of-date documents?'), findsOneWidget);
+    expect(opened, isEmpty);
+    expect(harnesses.exported, isNull);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(harnesses.generated, false);
+    expect(opened, isEmpty);
+    await tester.tap(find.widgetWithText(FilledButton, 'Apply'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Apply anyway'));
+    await tester.pumpAndSettle();
+    expect(opened, hasLength(1));
+    expect(harnesses.exported, isNotNull);
+    expect(harnesses.generated, false);
+    expect(find.text('Did you complete the application?'), findsOneWidget);
+    expect(jobs.applied, isEmpty);
+    await tester.tap(find.text('Not now'));
+    await tester.pumpAndSettle();
+  });
 
   for (final decision in [
     'applied',
@@ -929,6 +1291,18 @@ void main() {
     await tester.tap(find.byIcon(Icons.query_stats_outlined));
     await tester.pumpAndSettle();
     expect(find.text('Application statistics'), findsOneWidget);
+    expect(find.text('Jobs found per application'), findsOneWidget);
+    expect(find.text('Applications per interview'), findsOneWidget);
+    expect(find.text('4'), findsOneWidget);
+    expect(find.text('2.5'), findsOneWidget);
+    expect(find.textContaining(':1'), findsNothing);
+    expect(find.textContaining('jobs reaching interviews'), findsNothing);
+    expect(
+      tester.getTopLeft(find.text('4')).dy,
+      lessThan(
+        tester.getTopLeft(find.byKey(const ValueKey('application-funnel'))).dy,
+      ),
+    );
     expect(
       tester
           .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'All time'))
@@ -1002,6 +1376,8 @@ void main() {
       await tester.tap(find.widgetWithText(ChoiceChip, period.label));
       await tester.pumpAndSettle();
       expect(jobs.since, period.start(DateTime.now()));
+      expect(find.text('No interviews yet'), findsNothing);
+      expect(find.text('4'), findsNothing);
       expect(
         find.text('No jobs changed state in this period.'),
         findsOneWidget,
@@ -1019,6 +1395,12 @@ void main() {
     expect(find.text('120'), findsNWidgets(3));
     await tester.binding.setSurfaceSize(const Size(600, 800));
     await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(find.text('Applications per interview')).dy,
+      greaterThan(
+        tester.getTopLeft(find.text('Jobs found per application')).dy,
+      ),
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -1128,6 +1510,12 @@ void main() {
     });
   }
   for (final scenario in [
+    (
+      reviewed: true,
+      status: 'queued',
+      label: 'Queued documents',
+      enabled: false,
+    ),
     (reviewed: true, status: null, label: 'Ready to apply', enabled: true),
     (reviewed: false, status: null, label: 'Ready to apply', enabled: true),
     (
@@ -1291,14 +1679,14 @@ void main() {
         'Edited inline',
       );
       await tester.pumpAndSettle();
-      expect(
-        tester
-            .widget<OutlinedButton>(
-              find.widgetWithText(OutlinedButton, 'Refresh'),
-            )
-            .onPressed,
-        isNull,
+      await tester.tap(
+        find.descendant(
+          of: find.byType(NavigationRail),
+          matching: find.text('Jobs'),
+        ),
       );
+      await tester.pumpAndSettle();
+      expect(find.text('Edited inline'), findsWidgets);
       await tester.pump(const Duration(minutes: 4));
       await tester.pumpAndSettle();
 
@@ -1406,7 +1794,12 @@ void main() {
       ]);
       await tester.pumpAndSettle();
       expect(find.text('Job two'), findsNothing);
-      await tester.tap(find.text('Refresh'));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(NavigationRail),
+          matching: find.text('Jobs'),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(find.text('Job two'), findsOneWidget);
       expect(find.text('Description for three'), findsOneWidget);
@@ -1423,7 +1816,12 @@ void main() {
 
       jobs.update([]);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Refresh'));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(NavigationRail),
+          matching: find.text('Jobs'),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(find.text('Nothing needs your attention'), findsOneWidget);
       expect(
@@ -1710,7 +2108,8 @@ void main() {
 
     expect(find.text('Inbox'), findsWidgets);
     expect(find.text('Nothing needs your attention'), findsOneWidget);
-    expect(find.text('Add listing'), findsOneWidget);
+    expect(find.byTooltip('Add listing'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Add listing'), findsNothing);
   });
 
   testWidgets(
@@ -1915,12 +2314,28 @@ void main() {
       expect(find.text('Job second'), findsOneWidget);
       expect(find.text('Description for two'), findsOneWidget);
       jobs.current = [];
-      await tester.tap(find.text('Refresh'));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(NavigationRail),
+          matching: find.text('Jobs'),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(find.text('Nothing needs your attention'), findsOneWidget);
-      expect(find.text('Refresh'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(NavigationRail),
+          matching: find.text('Jobs'),
+        ),
+        findsOneWidget,
+      );
       jobs.current = [_queueJob('back')];
-      await tester.tap(find.text('Refresh'));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(NavigationRail),
+          matching: find.text('Jobs'),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(find.text('Job back'), findsWidgets);
       await tester.pumpWidget(const SizedBox.shrink());
@@ -2015,6 +2430,10 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(1500, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    tester.view.physicalSize = const Size(1500, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final jobs = _InboxQueueStore()
       ..current = [_queueJob('one'), _queueJob('two', ready: true)];
     addTearDown(jobs.close);
@@ -2028,6 +2447,26 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(
+      tester.getCenter(find.text('All jobs')).dx,
+      lessThan(tester.getCenter(find.text('Filters')).dx),
+    );
+    expect(
+      tester.getCenter(find.text('Filters')).dx,
+      lessThan(tester.getCenter(find.text('Select jobs')).dx),
+    );
+    expect(
+      tester.getCenter(find.text('All jobs')).dy,
+      closeTo(tester.getCenter(find.text('Filters')).dy, 1),
+    );
+    expect(find.widgetWithText(OutlinedButton, 'Refresh'), findsNothing);
+    expect(find.widgetWithText(FilledButton, 'Add listing'), findsNothing);
+    final refreshIcon = find.byTooltip('Refresh jobs');
+    expect(refreshIcon, findsOneWidget);
+    expect(
+      tester.getTopRight(refreshIcon).dx,
+      greaterThan(tester.getTopRight(find.byType(NavigationRail)).dx - 36),
+    );
     await tester.tap(find.text('Filters'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('Review-null')));
@@ -2038,6 +2477,19 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Job one'), findsNothing);
     expect(find.text('Job two'), findsWidgets);
+    final search = find.byKey(const ValueKey('job-list-search'));
+    await tester.enterText(search, 'Job');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('All jobs'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(search).controller!.text, 'Job');
+    expect(find.text('Filters •'), findsOneWidget);
+    expect(find.text('Job one'), findsNothing);
+    await tester.tap(find.text('Inbox').first);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(search).controller!.text, 'Job');
+    expect(find.text('Job one'), findsNothing);
     await tester.tap(find.text('Filters •'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Clear filters'));
@@ -2367,6 +2819,10 @@ void main() {
 
 class _EmptyAiHarnessStore implements AiHarnessStore {
   @override
+  Future<ApplicationRegenerationResult> regenerateApplications(
+    List<String> jobIds,
+  ) async => ApplicationRegenerationResult(jobIds, {});
+  @override
   Future<void> resumeMaterialGeneration(String conversationId) async {}
   @override
   Future<void> interruptConversation(String conversationId) async {}
@@ -2408,8 +2864,10 @@ class _EmptyAiHarnessStore implements AiHarnessStore {
     String jobId,
     String materialId,
     ApplicationDocumentFormat format,
-    ApplicationDocumentRenderer renderer,
-  ) async => '/tmp/test-output';
+    ApplicationDocumentRenderer renderer, {
+    bool forApplication = false,
+    bool allowOutdated = false,
+  }) async => '/tmp/test-output';
   @override
   Future<void> configureAgent(
     AcpConfigure configure, {
@@ -2477,7 +2935,8 @@ class _EmptyAiHarnessStore implements AiHarnessStore {
 }
 
 class _DraftHarness extends _EmptyAiHarnessStore {
-  _DraftHarness({this.reviewed = false, this.status});
+  _DraftHarness({this.reviewed = false, this.status, this.outdated = false});
+  final bool outdated;
   final bool reviewed;
   final String? status;
   @override
@@ -2492,6 +2951,7 @@ class _DraftHarness extends _EmptyAiHarnessStore {
       resume: '# Alex <!-- facts: identity -->',
       coverLetter: 'Hello <!-- facts: identity -->',
       reviewed: reviewed,
+      outdated: outdated,
       createdAt: DateTime.now(),
     ),
   );
@@ -2544,7 +3004,8 @@ class _ApplyDecisionStore extends _EmptyJobStore {
 }
 
 class _HeaderExportHarness extends _DraftHarness {
-  _HeaderExportHarness({this.succeed = false}) : super(reviewed: false);
+  _HeaderExportHarness({this.succeed = false, super.outdated})
+    : super(reviewed: false);
   final bool succeed;
   List<Object>? exported;
   @override
@@ -2552,8 +3013,13 @@ class _HeaderExportHarness extends _DraftHarness {
     String jobId,
     String materialId,
     ApplicationDocumentFormat format,
-    ApplicationDocumentRenderer renderer,
-  ) async {
+    ApplicationDocumentRenderer renderer, {
+    bool forApplication = false,
+    bool allowOutdated = false,
+  }) async {
+    if (forApplication && outdated && !allowOutdated) {
+      throw OutdatedApplicationDocuments();
+    }
     exported = [jobId, materialId, format];
     if (succeed) return '/test/Documents/CareerShopper';
     throw StateError('Fixture export stopped before browser launch.');
@@ -3389,6 +3855,8 @@ class _OneJobStore extends _EmptyJobStore {
 
 InboxJob _queueJob(
   String id, {
+  String? compensationText,
+  String? employmentType,
   bool ready = false,
   String? title,
   String? employer,
@@ -3396,6 +3864,8 @@ InboxJob _queueJob(
 }) => InboxJob(
   id: id,
   title: title ?? 'Job $id',
+  compensationText: compensationText,
+  employmentType: employmentType,
   employerName: employer ?? 'Example',
   location: 'Remote',
   description: description ?? 'Description for $id',
@@ -3579,5 +4049,16 @@ class _RetryChatHarness extends _ContextHarnessStore {
   Future<void> resumeMaterialGeneration(String conversationId) async {
     retried.add(conversationId);
     await resuming.future;
+  }
+}
+
+class _BulkHarness extends _EmptyAiHarnessStore {
+  List<String> regenerated = [];
+  @override
+  Future<ApplicationRegenerationResult> regenerateApplications(
+    List<String> jobIds,
+  ) async {
+    regenerated = jobIds;
+    return ApplicationRegenerationResult(jobIds, {});
   }
 }

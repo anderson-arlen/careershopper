@@ -86,17 +86,47 @@ class _JobApplicationActionsState extends State<JobApplicationActions> {
           'assets/fonts/DejaVuSans-BoldOblique.ttf',
         )).buffer.asUint8List();
       }
-      final output = await widget.harnesses.exportApplication(
-        widget.job.id,
-        draft.id,
-        _format,
-        ApplicationDocumentRenderer(
-          regularFont: regular,
-          boldFont: bold,
-          italicFont: italic,
-          boldItalicFont: boldItalic,
-        ),
-      );
+      Future<String> export({bool allowOutdated = false}) =>
+          widget.harnesses.exportApplication(
+            widget.job.id,
+            draft.id,
+            _format,
+            ApplicationDocumentRenderer(
+              regularFont: regular,
+              boldFont: bold,
+              italicFont: italic,
+              boldItalicFont: boldItalic,
+            ),
+            forApplication: openListing,
+            allowOutdated: allowOutdated,
+          );
+      String output;
+      try {
+        output = await export();
+      } on OutdatedApplicationDocuments {
+        if (!mounted) return;
+        final proceed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Apply with out-of-date documents?'),
+            content: const Text(
+              'Your profile has changed since these documents were saved. You can use the saved resume and cover letter as they are, or cancel and regenerate them.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Apply anyway'),
+              ),
+            ],
+          ),
+        );
+        if (!mounted || proceed != true) return;
+        output = await export(allowOutdated: true);
+      }
       if (mounted) setState(() => _output = output);
       if (openListing) {
         await widget.openUrl(url!);
@@ -189,7 +219,7 @@ class _JobApplicationActionsState extends State<JobApplicationActions> {
             status.connectionState == ConnectionState.waiting ||
             materials.connectionState == ConnectionState.waiting;
         final error = status.hasError || materials.hasError;
-        final generating = status.data == 'running';
+        final generating = ['queued', 'running'].contains(status.data);
         final approved = widget.job.reviewState == ReviewState.approved;
         final ready =
             !loading &&
@@ -262,6 +292,21 @@ class _JobApplicationActionsState extends State<JobApplicationActions> {
                 ...widget.secondaryActions,
               ],
             ),
+            if (draft?.outdated == true)
+              const Padding(
+                padding: EdgeInsets.only(top: 12),
+                child: Row(
+                  children: [
+                    Icon(Icons.update, size: 20),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Documents out of date · Your profile has changed. You can still apply with these documents or regenerate them.',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             if (_output != null) SelectableText('Application files: $_output'),
           ],
         );

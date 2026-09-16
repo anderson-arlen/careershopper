@@ -8,11 +8,14 @@ import 'package:flutter/services.dart';
 import '../shared/window_activity.dart';
 
 import '../../domain/job.dart';
+import '../../domain/interview.dart';
 import '../../domain/job_statistics.dart';
 import '../../platform/external_url_launcher.dart';
 import '../../storage/job_repository.dart';
 import '../../storage/ai_harness_repository.dart';
 import '../documents/application_materials_panel.dart';
+import '../documents/application_answers_panel.dart';
+import '../../storage/application_answer_repository.dart';
 import '../documents/job_application_actions.dart';
 import 'job_chat_panel.dart';
 import 'job_notes_section.dart';
@@ -20,15 +23,16 @@ import 'job_notes_section.dart';
 class JobBrowser extends StatefulWidget {
   const JobBrowser({
     required this.title,
+    this.view = 'all',
     required this.emptyTitle,
     required this.emptyMessage,
     required this.jobs,
     this.refreshJobs,
     this.pageJobs,
     this.viewSelector,
+    this.refreshRequest = 0,
     this.openInterviews = false,
     required this.repository,
-    required this.onAddListing,
     required this.onRunAi,
     required this.harnesses,
     this.interviews,
@@ -37,6 +41,8 @@ class JobBrowser extends StatefulWidget {
     super.key,
   });
 
+  final String view;
+  final int refreshRequest;
   final Widget? viewSelector;
   final bool openInterviews;
   final String title;
@@ -51,7 +57,6 @@ class JobBrowser extends StatefulWidget {
   )?
   pageJobs;
   final JobStore repository;
-  final VoidCallback onAddListing;
   final Future<void> Function(InboxJob job) onRunAi;
   final AiHarnessStore harnesses;
   final InterviewRepository? interviews;
@@ -63,6 +68,8 @@ class JobBrowser extends StatefulWidget {
 }
 
 class _JobBrowserState extends State<JobBrowser> {
+  bool _selecting = false, _queueing = false;
+  final _checkedJobs = <String, InboxJob>{};
   int _pageLimit = 50;
   Stream<List<InboxJob>>? _pageStream;
   Timer? _searchDebounce;
@@ -88,6 +95,21 @@ class _JobBrowserState extends State<JobBrowser> {
     _pageStream = null;
     _visibleJobs = null;
     _selectedIndex = 0;
+  }
+
+  @override
+  void didUpdateWidget(covariant JobBrowser oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshRequest != widget.refreshRequest) {
+      unawaited(_refresh(manual: true));
+    }
+    if (oldWidget.view != widget.view) {
+      _searchDebounce?.cancel();
+      _activityVersion++;
+      _resetPage();
+      _protected = false;
+      _scheduleRefresh();
+    }
   }
 
   @override
@@ -121,16 +143,20 @@ class _JobBrowserState extends State<JobBrowser> {
   Future<void> _refresh({bool manual = false}) async {
     if (_refreshing || _protected || widget.refreshJobs == null) return;
     final version = _activityVersion;
+    final query = _currentPage;
     setState(() => _refreshing = true);
     try {
       final jobs = await _readPage();
-      if (mounted && !_protected && (manual || version == _activityVersion)) {
+      if (mounted &&
+          identical(query, _currentPage) &&
+          !_protected &&
+          (manual || version == _activityVersion)) {
         setState(() => _visibleJobs = jobs);
       }
     } on Object catch (error) {
       if (mounted && manual) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not refresh inbox: $error')),
+          SnackBar(content: Text('Could not refresh jobs: $error')),
         );
       }
     } finally {
@@ -140,8 +166,11 @@ class _JobBrowserState extends State<JobBrowser> {
 
   Future<void> _afterAction(String id) async {
     if (widget.refreshJobs == null) return;
+    final query = _currentPage;
     final latest = await _readPage();
-    if (!mounted || _visibleJobs == null) return;
+    if (!mounted || !identical(query, _currentPage) || _visibleJobs == null) {
+      return;
+    }
     final updated = latest.where((job) => job.id == id).firstOrNull;
     setState(() {
       // Apply only the user's action; unrelated arrivals and reordering wait.
@@ -150,6 +179,63 @@ class _JobBrowserState extends State<JobBrowser> {
           if (job.id != id) job else ?updated,
       ];
     });
+  }
+
+  Future<void> _regenerateSelected() async {
+    final selected = Map<String, InboxJob>.from(_checkedJobs);
+    setState(() => _queueing = true);
+    try {
+      final result = await widget.harnesses.regenerateApplications(
+        selected.keys.toList(),
+      );
+      if (!mounted) return;
+      setState(() {
+        for (final id in result.queued) {
+          _checkedJobs.remove(id);
+        }
+        _resetPage();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${result.queued.length} document pairs queued. Follow their progress in AI Activity.',
+          ),
+        ),
+      );
+      if (result.errors.isNotEmpty) {
+        await showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Some documents could not be queued'),
+            content: SizedBox(
+              width: 500,
+              child: SingleChildScrollView(
+                child: Text(
+                  [
+                    for (final entry in result.errors.entries)
+                      '${selected[entry.key]?.title ?? entry.key}: ${entry.value}',
+                  ].join('\n\n'),
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
+        );
+      }
+    } on Object catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not queue documents: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _queueing = false);
+    }
   }
 
   Future<void> _editFilters() async {
@@ -265,18 +351,16 @@ class _JobBrowserState extends State<JobBrowser> {
     return StreamBuilder<List<InboxJob>>(
       stream: _currentPage,
       builder: (context, snapshot) {
-        if (snapshot.hasError && _visibleJobs == null) {
-          return _ErrorState(error: snapshot.error);
-        }
-        if ((!snapshot.hasData ||
-                (widget.pageJobs != null &&
-                    snapshot.connectionState == ConnectionState.waiting)) &&
-            _visibleJobs == null) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final availableJobs = widget.refreshJobs == null
-            ? snapshot.data!
-            : (_visibleJobs ??= snapshot.data!);
+        final loading =
+            !snapshot.hasError &&
+            (!snapshot.hasData ||
+                snapshot.connectionState == ConnectionState.waiting) &&
+            _visibleJobs == null;
+        final availableJobs = loading || snapshot.hasError
+            ? <InboxJob>[]
+            : widget.refreshJobs == null
+            ? snapshot.data ?? <InboxJob>[]
+            : (_visibleJobs ??= snapshot.data ?? <InboxJob>[]);
 
         final hasMore =
             widget.pageJobs != null && availableJobs.length > _pageLimit;
@@ -295,22 +379,80 @@ class _JobBrowserState extends State<JobBrowser> {
             ? _selectedIndex.clamp(0, jobs.length - 1)
             : retainedIndex;
         final selected = jobs.isEmpty ? null : jobs[_selectedIndex];
-        _selectedJobId = selected?.id;
+        if (!loading && !snapshot.hasError) _selectedJobId = selected?.id;
         return Column(
           children: [
             _Toolbar(
               title: widget.title,
               viewSelector: widget.viewSelector,
+              selectionAction: widget.openInterviews
+                  ? null
+                  : OutlinedButton.icon(
+                      onPressed: _protected || _queueing
+                          ? null
+                          : () => setState(() {
+                              _selecting = !_selecting;
+                              if (!_selecting) _checkedJobs.clear();
+                            }),
+                      icon: Icon(_selecting ? Icons.close : Icons.checklist),
+                      label: Text(
+                        _selecting ? 'Done selecting' : 'Select jobs',
+                      ),
+                    ),
               onFilters: _protected ? null : _editFilters,
               filtersActive: _filters.isActive,
-              count: jobs.length,
-              onAddListing: widget.onAddListing,
-              onRefresh: widget.refreshJobs == null
-                  ? null
-                  : () => _refresh(manual: true),
-              refreshing: _refreshing,
               protected: _protected,
             ),
+            if (_selecting)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 20, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Select unapplied jobs with saved documents to regenerate their resume and cover letter from your current Resume content. Existing documents stay available until replacements are ready.',
+                    ),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text('${_checkedJobs.length} selected'),
+                        TextButton(
+                          onPressed: _queueing
+                              ? null
+                              : () => setState(() {
+                                  for (final job in jobs.where(
+                                    (j) => j.canRegenerateDocuments,
+                                  )) {
+                                    _checkedJobs[job.id] = job;
+                                  }
+                                }),
+                          child: const Text('Select eligible on this page'),
+                        ),
+                        TextButton(
+                          onPressed: _queueing || _checkedJobs.isEmpty
+                              ? null
+                              : () => setState(_checkedJobs.clear),
+                          child: const Text('Clear selection'),
+                        ),
+                        FilledButton.icon(
+                          onPressed:
+                              _queueing || _checkedJobs.isEmpty || _protected
+                              ? null
+                              : _regenerateSelected,
+                          icon: const Icon(Icons.auto_awesome),
+                          label: Text(
+                            _queueing
+                                ? 'Queueing documents…'
+                                : 'Regenerate selected documents',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             const Divider(height: 1),
             Expanded(
               child: Row(
@@ -337,6 +479,7 @@ class _JobBrowserState extends State<JobBrowser> {
                                       onPressed: _protected
                                           ? null
                                           : () => setState(() {
+                                              _searchDebounce?.cancel();
                                               _search.clear();
                                               _resetPage();
                                             }),
@@ -356,9 +499,22 @@ class _JobBrowserState extends State<JobBrowser> {
                             },
                           ),
                         ),
+                        if (loading) const LinearProgressIndicator(),
                         Expanded(
                           child: _JobList(
                             jobs: jobs,
+                            checked: _selecting
+                                ? _checkedJobs.keys.toSet()
+                                : null,
+                            onChecked: _queueing || _protected
+                                ? null
+                                : (job, checked) => setState(() {
+                                    if (checked) {
+                                      _checkedJobs[job.id] = job;
+                                    } else {
+                                      _checkedJobs.remove(job.id);
+                                    }
+                                  }),
                             interviews: widget.openInterviews
                                 ? widget.interviews
                                 : null,
@@ -385,14 +541,22 @@ class _JobBrowserState extends State<JobBrowser> {
                   ),
                   const VerticalDivider(width: 1),
                   Expanded(
-                    child: selected == null
+                    child: snapshot.hasError
+                        ? _ErrorState(error: snapshot.error)
+                        : loading
+                        ? const Center(child: CircularProgressIndicator())
+                        : selected == null
                         ? _EmptyState(
-                            title: _search.text.trim().isEmpty
+                            title:
+                                _search.text.trim().isEmpty &&
+                                    !_filters.isActive
                                 ? widget.emptyTitle
                                 : 'No matching jobs',
-                            message: _search.text.trim().isEmpty
+                            message:
+                                _search.text.trim().isEmpty &&
+                                    !_filters.isActive
                                 ? widget.emptyMessage
-                                : 'Try another search or clear it to show all jobs in this view.',
+                                : 'Try another search, clear filters, or switch views to find the jobs you need.',
                           )
                         : _JobDetail(
                             key: ValueKey(selected.id),
@@ -431,24 +595,18 @@ class _JobBrowserState extends State<JobBrowser> {
 class _Toolbar extends StatelessWidget {
   const _Toolbar({
     required this.title,
-    required this.count,
-    required this.onAddListing,
-    this.onRefresh,
     this.viewSelector,
+    this.selectionAction,
     this.onFilters,
     this.filtersActive = false,
-    this.refreshing = false,
     this.protected = false,
   });
 
-  final Widget? viewSelector;
+  final Widget? viewSelector, selectionAction;
   final VoidCallback? onFilters;
   final bool filtersActive;
   final String title;
-  final int count;
-  final VoidCallback onAddListing;
-  final VoidCallback? onRefresh;
-  final bool refreshing, protected;
+  final bool protected;
 
   @override
   Widget build(BuildContext context) {
@@ -466,40 +624,27 @@ class _Toolbar extends StatelessWidget {
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
               ),
-              const SizedBox(width: 10),
-              Badge(label: Text('$count')),
-              if (onRefresh != null) ...[
-                Tooltip(
-                  message: protected
-                      ? 'Save or revert document edits before refreshing'
-                      : 'Refresh inbox',
-                  child: OutlinedButton.icon(
-                    onPressed: refreshing || protected ? null : onRefresh,
-                    icon: const Icon(Icons.refresh),
-                    label: Text(refreshing ? 'Refreshing…' : 'Refresh'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-              ],
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 20, 12),
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (viewSelector != null)
+                IgnorePointer(ignoring: protected, child: viewSelector!),
               OutlinedButton.icon(
                 onPressed: onFilters,
                 icon: const Icon(Icons.tune),
                 label: Text(filtersActive ? 'Filters •' : 'Filters'),
               ),
-              const SizedBox(width: 8),
-              FilledButton.icon(
-                onPressed: onAddListing,
-                icon: const Icon(Icons.add_link),
-                label: const Text('Add listing'),
-              ),
+              ?selectionAction,
             ],
           ),
         ),
-        if (viewSelector != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 20, 12),
-            child: viewSelector,
-          ),
       ],
     );
   }
@@ -508,11 +653,15 @@ class _Toolbar extends StatelessWidget {
 class _JobList extends StatelessWidget {
   const _JobList({
     required this.jobs,
+    this.checked,
+    this.onChecked,
     this.interviews,
     required this.selectedJobId,
     required this.onSelected,
   });
 
+  final Set<String>? checked;
+  final void Function(InboxJob job, bool checked)? onChecked;
   final InterviewRepository? interviews;
   final List<InboxJob> jobs;
   final String? selectedJobId;
@@ -539,6 +688,17 @@ class _JobList extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (checked != null)
+                    Checkbox(
+                      value: checked!.contains(job.id),
+                      semanticLabel: 'Select ${job.title}',
+                      onChanged:
+                          onChecked == null ||
+                              (!job.canRegenerateDocuments &&
+                                  !checked!.contains(job.id))
+                          ? null
+                          : (value) => onChecked!(job, value!),
+                    ),
                   Column(
                     children: [
                       _SourceIcon(sourceFamily: job.sourceFamily),
@@ -573,6 +733,41 @@ class _JobList extends StatelessWidget {
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ],
+                        if (interviews != null &&
+                            job.nextInterviewStage != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.primaryContainer,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Icon(Icons.event, size: 20),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      () {
+                                        final date = DateTime.parse(
+                                          job.nextInterviewStage!['scheduled_at']!
+                                              as String,
+                                        ).toLocal();
+                                        return '${MaterialLocalizations.of(context).formatFullDate(date)}\n${TimeOfDay.fromDateTime(date).format(context)} ${date.timeZoneName}\n${job.nextInterviewStage!['name']}';
+                                      }(),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         if (interviews != null)
                           FutureBuilder<Map<String, Object?>>(
                             future: interviews!.summary(job.id),
@@ -581,29 +776,16 @@ class _JobList extends StatelessWidget {
                                 return const SizedBox.shrink();
                               }
                               final data = snapshot.data!;
-                              final stages = (data['ladder'] as List)
-                                  .cast<Map>();
-                              final next = stages
-                                  .where(
-                                    (s) =>
-                                        s['archived'] != true &&
-                                        ![
-                                          'completed',
-                                          'skipped',
-                                          'cancelled',
-                                        ].contains(s['status']),
-                                  )
-                                  .firstOrNull;
-                              final scheduled = DateTime.tryParse(
-                                '${next?['scheduled_at']}',
-                              )?.toLocal();
+                              final next = currentInterviewStage(
+                                interviewMaps(data['ladder']),
+                              );
                               return Padding(
                                 padding: const EdgeInsets.only(top: 8),
                                 child: Text(
                                   [
-                                    if (next != null) 'Next: ${next['name']}',
-                                    if (scheduled != null)
-                                      '${MaterialLocalizations.of(context).formatMediumDate(scheduled)} ${TimeOfDay.fromDateTime(scheduled).format(context)}',
+                                    if (next != null &&
+                                        job.nextInterviewStage == null)
+                                      'Next: ${next['name']}',
                                     'Preparation: ${data['preparation_state']}',
                                   ].join('\n'),
                                 ),
@@ -614,6 +796,12 @@ class _JobList extends StatelessWidget {
                         Wrap(
                           spacing: 6,
                           children: [
+                            if (job.documentsOutdated)
+                              const Chip(
+                                avatar: Icon(Icons.update, size: 18),
+                                label: Text('Documents out of date'),
+                                visualDensity: VisualDensity.compact,
+                              ),
                             if (job.aiError != null)
                               Chip(
                                 avatar: Icon(
@@ -1098,6 +1286,23 @@ class _JobDetailState extends State<_JobDetail> {
                   ],
                 ),
                 const SizedBox(height: 24),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    _JobTerm(
+                      icon: Icons.payments_outlined,
+                      label: 'Compensation',
+                      value: job.compensationText,
+                    ),
+                    _JobTerm(
+                      icon: Icons.work_outline,
+                      label: 'Job type',
+                      value: job.employmentType,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
                 if (job.aiError != null) ...[
                   Card.filled(
                     color: Theme.of(context).colorScheme.errorContainer,
@@ -1240,8 +1445,19 @@ class _JobDetailState extends State<_JobDetail> {
                               ? null
                               : () => widget.onPrepareInterviews!(job.id),
                         ),
-                  documents: job.reviewState == ReviewState.approved
-                      ? ApplicationMaterialsPanel(
+                  documents: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (repository case final JobRepository jobs)
+                        ApplicationAnswersPanel(
+                          key: ValueKey('answers-${job.id}'),
+                          jobId: job.id,
+                          repository: ApplicationAnswerRepository(
+                            jobs.database,
+                          ),
+                        ),
+                      if (job.reviewState == ReviewState.approved)
+                        ApplicationMaterialsPanel(
                           key: ValueKey('materials-${job.id}'),
                           job: job,
                           harnesses: harnesses,
@@ -1251,12 +1467,15 @@ class _JobDetailState extends State<_JobDetail> {
                             widget.onProtectedChanged(_dirty || _applying);
                           },
                         )
-                      : const Padding(
+                      else
+                        const Padding(
                           padding: EdgeInsets.all(20),
                           child: Text(
                             'Approve this job to queue AI generation of the Markdown resume and cover letter.',
                           ),
                         ),
+                    ],
+                  ),
                   details: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1268,6 +1487,25 @@ class _JobDetailState extends State<_JobDetail> {
                           style: Theme.of(context).textTheme.titleLarge,
                         ),
                         const SizedBox(height: 10),
+                        if (job.unmetRequirements.isNotEmpty) ...[
+                          Text(
+                            'Required qualifications not met',
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(
+                                  color: Theme.of(context).colorScheme.error,
+                                ),
+                          ),
+                          for (final requirement in job.unmetRequirements)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Text(
+                                '${requirement['requirement']}\n'
+                                'Listing: ${requirement['posting_evidence']}\n'
+                                'Profile: ${requirement['applicant_evidence']}',
+                              ),
+                            ),
+                          const SizedBox(height: 12),
+                        ],
                         Wrap(
                           spacing: 18,
                           children: [
@@ -1386,21 +1624,23 @@ class _EmptyState extends StatelessWidget {
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 500),
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.travel_explore,
-                size: 56,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(height: 20),
-              Text(title, style: Theme.of(context).textTheme.headlineSmall),
-              const SizedBox(height: 10),
-              Text(message, textAlign: TextAlign.center),
-            ],
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.travel_explore,
+                  size: 56,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(height: 20),
+                Text(title, style: Theme.of(context).textTheme.headlineSmall),
+                const SizedBox(height: 10),
+                Text(message, textAlign: TextAlign.center),
+              ],
+            ),
           ),
         ),
       ),
@@ -1419,6 +1659,66 @@ class _ErrorState extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Text('CareerShopper could not load its local database.\n$error'),
+      ),
+    );
+  }
+}
+
+class _JobTerm extends StatelessWidget {
+  const _JobTerm({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String? value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final known = value?.trim().isNotEmpty == true;
+    final foreground = known
+        ? theme.colorScheme.onPrimaryContainer
+        : theme.colorScheme.onSurfaceVariant;
+    return Container(
+      constraints: const BoxConstraints(minWidth: 240),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: known
+            ? theme.colorScheme.primaryContainer
+            : theme.colorScheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: known
+              ? theme.colorScheme.primary
+              : theme.colorScheme.outlineVariant,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 20, color: foreground),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: theme.textTheme.labelLarge?.copyWith(color: foreground),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            known ? value! : 'Not specified',
+            style: theme.textTheme.titleLarge?.copyWith(
+              color: foreground,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }

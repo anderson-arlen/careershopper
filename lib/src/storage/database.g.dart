@@ -4432,6 +4432,17 @@ class $JobSnapshotsTable extends JobSnapshots
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _employmentTypeMeta = const VerificationMeta(
+    'employmentType',
+  );
+  @override
+  late final GeneratedColumn<String> employmentType = GeneratedColumn<String>(
+    'employment_type',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _capturedAtMeta = const VerificationMeta(
     'capturedAt',
   );
@@ -4455,6 +4466,7 @@ class $JobSnapshotsTable extends JobSnapshots
     descriptionHash,
     applicationUrl,
     compensationJson,
+    employmentType,
     capturedAt,
   ];
   @override
@@ -4551,6 +4563,15 @@ class $JobSnapshotsTable extends JobSnapshots
         ),
       );
     }
+    if (data.containsKey('employment_type')) {
+      context.handle(
+        _employmentTypeMeta,
+        employmentType.isAcceptableOrUnknown(
+          data['employment_type']!,
+          _employmentTypeMeta,
+        ),
+      );
+    }
     if (data.containsKey('captured_at')) {
       context.handle(
         _capturedAtMeta,
@@ -4612,6 +4633,10 @@ class $JobSnapshotsTable extends JobSnapshots
         DriftSqlType.string,
         data['${effectivePrefix}compensation_json'],
       ),
+      employmentType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}employment_type'],
+      ),
       capturedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}captured_at'],
@@ -4636,6 +4661,7 @@ class JobSnapshotRow extends DataClass implements Insertable<JobSnapshotRow> {
   final String descriptionHash;
   final String? applicationUrl;
   final String? compensationJson;
+  final String? employmentType;
   final DateTime capturedAt;
   const JobSnapshotRow({
     required this.id,
@@ -4648,6 +4674,7 @@ class JobSnapshotRow extends DataClass implements Insertable<JobSnapshotRow> {
     required this.descriptionHash,
     this.applicationUrl,
     this.compensationJson,
+    this.employmentType,
     required this.capturedAt,
   });
   @override
@@ -4668,6 +4695,9 @@ class JobSnapshotRow extends DataClass implements Insertable<JobSnapshotRow> {
     }
     if (!nullToAbsent || compensationJson != null) {
       map['compensation_json'] = Variable<String>(compensationJson);
+    }
+    if (!nullToAbsent || employmentType != null) {
+      map['employment_type'] = Variable<String>(employmentType);
     }
     map['captured_at'] = Variable<DateTime>(capturedAt);
     return map;
@@ -4691,6 +4721,9 @@ class JobSnapshotRow extends DataClass implements Insertable<JobSnapshotRow> {
       compensationJson: compensationJson == null && nullToAbsent
           ? const Value.absent()
           : Value(compensationJson),
+      employmentType: employmentType == null && nullToAbsent
+          ? const Value.absent()
+          : Value(employmentType),
       capturedAt: Value(capturedAt),
     );
   }
@@ -4711,6 +4744,7 @@ class JobSnapshotRow extends DataClass implements Insertable<JobSnapshotRow> {
       descriptionHash: serializer.fromJson<String>(json['descriptionHash']),
       applicationUrl: serializer.fromJson<String?>(json['applicationUrl']),
       compensationJson: serializer.fromJson<String?>(json['compensationJson']),
+      employmentType: serializer.fromJson<String?>(json['employmentType']),
       capturedAt: serializer.fromJson<DateTime>(json['capturedAt']),
     );
   }
@@ -4728,6 +4762,7 @@ class JobSnapshotRow extends DataClass implements Insertable<JobSnapshotRow> {
       'descriptionHash': serializer.toJson<String>(descriptionHash),
       'applicationUrl': serializer.toJson<String?>(applicationUrl),
       'compensationJson': serializer.toJson<String?>(compensationJson),
+      'employmentType': serializer.toJson<String?>(employmentType),
       'capturedAt': serializer.toJson<DateTime>(capturedAt),
     };
   }
@@ -4743,6 +4778,7 @@ class JobSnapshotRow extends DataClass implements Insertable<JobSnapshotRow> {
     String? descriptionHash,
     Value<String?> applicationUrl = const Value.absent(),
     Value<String?> compensationJson = const Value.absent(),
+    Value<String?> employmentType = const Value.absent(),
     DateTime? capturedAt,
   }) => JobSnapshotRow(
     id: id ?? this.id,
@@ -4759,6 +4795,9 @@ class JobSnapshotRow extends DataClass implements Insertable<JobSnapshotRow> {
     compensationJson: compensationJson.present
         ? compensationJson.value
         : this.compensationJson,
+    employmentType: employmentType.present
+        ? employmentType.value
+        : this.employmentType,
     capturedAt: capturedAt ?? this.capturedAt,
   );
   JobSnapshotRow copyWithCompanion(JobSnapshotsCompanion data) {
@@ -4783,6 +4822,9 @@ class JobSnapshotRow extends DataClass implements Insertable<JobSnapshotRow> {
       compensationJson: data.compensationJson.present
           ? data.compensationJson.value
           : this.compensationJson,
+      employmentType: data.employmentType.present
+          ? data.employmentType.value
+          : this.employmentType,
       capturedAt: data.capturedAt.present
           ? data.capturedAt.value
           : this.capturedAt,
@@ -4802,6 +4844,7 @@ class JobSnapshotRow extends DataClass implements Insertable<JobSnapshotRow> {
           ..write('descriptionHash: $descriptionHash, ')
           ..write('applicationUrl: $applicationUrl, ')
           ..write('compensationJson: $compensationJson, ')
+          ..write('employmentType: $employmentType, ')
           ..write('capturedAt: $capturedAt')
           ..write(')'))
         .toString();
@@ -4819,6 +4862,7 @@ class JobSnapshotRow extends DataClass implements Insertable<JobSnapshotRow> {
     descriptionHash,
     applicationUrl,
     compensationJson,
+    employmentType,
     capturedAt,
   );
   @override
@@ -4835,6 +4879,7 @@ class JobSnapshotRow extends DataClass implements Insertable<JobSnapshotRow> {
           other.descriptionHash == this.descriptionHash &&
           other.applicationUrl == this.applicationUrl &&
           other.compensationJson == this.compensationJson &&
+          other.employmentType == this.employmentType &&
           other.capturedAt == this.capturedAt);
 }
 
@@ -4849,6 +4894,7 @@ class JobSnapshotsCompanion extends UpdateCompanion<JobSnapshotRow> {
   final Value<String> descriptionHash;
   final Value<String?> applicationUrl;
   final Value<String?> compensationJson;
+  final Value<String?> employmentType;
   final Value<DateTime> capturedAt;
   final Value<int> rowid;
   const JobSnapshotsCompanion({
@@ -4862,6 +4908,7 @@ class JobSnapshotsCompanion extends UpdateCompanion<JobSnapshotRow> {
     this.descriptionHash = const Value.absent(),
     this.applicationUrl = const Value.absent(),
     this.compensationJson = const Value.absent(),
+    this.employmentType = const Value.absent(),
     this.capturedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -4876,6 +4923,7 @@ class JobSnapshotsCompanion extends UpdateCompanion<JobSnapshotRow> {
     required String descriptionHash,
     this.applicationUrl = const Value.absent(),
     this.compensationJson = const Value.absent(),
+    this.employmentType = const Value.absent(),
     required DateTime capturedAt,
     this.rowid = const Value.absent(),
   }) : id = Value(id),
@@ -4895,6 +4943,7 @@ class JobSnapshotsCompanion extends UpdateCompanion<JobSnapshotRow> {
     Expression<String>? descriptionHash,
     Expression<String>? applicationUrl,
     Expression<String>? compensationJson,
+    Expression<String>? employmentType,
     Expression<DateTime>? capturedAt,
     Expression<int>? rowid,
   }) {
@@ -4909,6 +4958,7 @@ class JobSnapshotsCompanion extends UpdateCompanion<JobSnapshotRow> {
       if (descriptionHash != null) 'description_hash': descriptionHash,
       if (applicationUrl != null) 'application_url': applicationUrl,
       if (compensationJson != null) 'compensation_json': compensationJson,
+      if (employmentType != null) 'employment_type': employmentType,
       if (capturedAt != null) 'captured_at': capturedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -4925,6 +4975,7 @@ class JobSnapshotsCompanion extends UpdateCompanion<JobSnapshotRow> {
     Value<String>? descriptionHash,
     Value<String?>? applicationUrl,
     Value<String?>? compensationJson,
+    Value<String?>? employmentType,
     Value<DateTime>? capturedAt,
     Value<int>? rowid,
   }) {
@@ -4939,6 +4990,7 @@ class JobSnapshotsCompanion extends UpdateCompanion<JobSnapshotRow> {
       descriptionHash: descriptionHash ?? this.descriptionHash,
       applicationUrl: applicationUrl ?? this.applicationUrl,
       compensationJson: compensationJson ?? this.compensationJson,
+      employmentType: employmentType ?? this.employmentType,
       capturedAt: capturedAt ?? this.capturedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -4977,6 +5029,9 @@ class JobSnapshotsCompanion extends UpdateCompanion<JobSnapshotRow> {
     if (compensationJson.present) {
       map['compensation_json'] = Variable<String>(compensationJson.value);
     }
+    if (employmentType.present) {
+      map['employment_type'] = Variable<String>(employmentType.value);
+    }
     if (capturedAt.present) {
       map['captured_at'] = Variable<DateTime>(capturedAt.value);
     }
@@ -4999,6 +5054,7 @@ class JobSnapshotsCompanion extends UpdateCompanion<JobSnapshotRow> {
           ..write('descriptionHash: $descriptionHash, ')
           ..write('applicationUrl: $applicationUrl, ')
           ..write('compensationJson: $compensationJson, ')
+          ..write('employmentType: $employmentType, ')
           ..write('capturedAt: $capturedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -16455,6 +16511,517 @@ class AuditEventsCompanion extends UpdateCompanion<AuditEventRow> {
   }
 }
 
+class $ApplicationAnswersTable extends ApplicationAnswers
+    with TableInfo<$ApplicationAnswersTable, ApplicationAnswerRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ApplicationAnswersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _jobIdMeta = const VerificationMeta('jobId');
+  @override
+  late final GeneratedColumn<String> jobId = GeneratedColumn<String>(
+    'job_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES jobs (id)',
+    ),
+  );
+  static const VerificationMeta _questionMeta = const VerificationMeta(
+    'question',
+  );
+  @override
+  late final GeneratedColumn<String> question = GeneratedColumn<String>(
+    'question',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _answerMeta = const VerificationMeta('answer');
+  @override
+  late final GeneratedColumn<String> answer = GeneratedColumn<String>(
+    'answer',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _revisionMeta = const VerificationMeta(
+    'revision',
+  );
+  @override
+  late final GeneratedColumn<int> revision = GeneratedColumn<int>(
+    'revision',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    jobId,
+    question,
+    answer,
+    status,
+    revision,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'application_answers';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ApplicationAnswerRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('job_id')) {
+      context.handle(
+        _jobIdMeta,
+        jobId.isAcceptableOrUnknown(data['job_id']!, _jobIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_jobIdMeta);
+    }
+    if (data.containsKey('question')) {
+      context.handle(
+        _questionMeta,
+        question.isAcceptableOrUnknown(data['question']!, _questionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_questionMeta);
+    }
+    if (data.containsKey('answer')) {
+      context.handle(
+        _answerMeta,
+        answer.isAcceptableOrUnknown(data['answer']!, _answerMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_answerMeta);
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_statusMeta);
+    }
+    if (data.containsKey('revision')) {
+      context.handle(
+        _revisionMeta,
+        revision.isAcceptableOrUnknown(data['revision']!, _revisionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_revisionMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ApplicationAnswerRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ApplicationAnswerRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      jobId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}job_id'],
+      )!,
+      question: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}question'],
+      )!,
+      answer: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}answer'],
+      )!,
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+      revision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}revision'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ApplicationAnswersTable createAlias(String alias) {
+    return $ApplicationAnswersTable(attachedDatabase, alias);
+  }
+}
+
+class ApplicationAnswerRow extends DataClass
+    implements Insertable<ApplicationAnswerRow> {
+  final String id;
+  final String jobId;
+  final String question;
+  final String answer;
+  final String status;
+  final int revision;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const ApplicationAnswerRow({
+    required this.id,
+    required this.jobId,
+    required this.question,
+    required this.answer,
+    required this.status,
+    required this.revision,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['job_id'] = Variable<String>(jobId);
+    map['question'] = Variable<String>(question);
+    map['answer'] = Variable<String>(answer);
+    map['status'] = Variable<String>(status);
+    map['revision'] = Variable<int>(revision);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  ApplicationAnswersCompanion toCompanion(bool nullToAbsent) {
+    return ApplicationAnswersCompanion(
+      id: Value(id),
+      jobId: Value(jobId),
+      question: Value(question),
+      answer: Value(answer),
+      status: Value(status),
+      revision: Value(revision),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory ApplicationAnswerRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ApplicationAnswerRow(
+      id: serializer.fromJson<String>(json['id']),
+      jobId: serializer.fromJson<String>(json['jobId']),
+      question: serializer.fromJson<String>(json['question']),
+      answer: serializer.fromJson<String>(json['answer']),
+      status: serializer.fromJson<String>(json['status']),
+      revision: serializer.fromJson<int>(json['revision']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'jobId': serializer.toJson<String>(jobId),
+      'question': serializer.toJson<String>(question),
+      'answer': serializer.toJson<String>(answer),
+      'status': serializer.toJson<String>(status),
+      'revision': serializer.toJson<int>(revision),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  ApplicationAnswerRow copyWith({
+    String? id,
+    String? jobId,
+    String? question,
+    String? answer,
+    String? status,
+    int? revision,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => ApplicationAnswerRow(
+    id: id ?? this.id,
+    jobId: jobId ?? this.jobId,
+    question: question ?? this.question,
+    answer: answer ?? this.answer,
+    status: status ?? this.status,
+    revision: revision ?? this.revision,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  ApplicationAnswerRow copyWithCompanion(ApplicationAnswersCompanion data) {
+    return ApplicationAnswerRow(
+      id: data.id.present ? data.id.value : this.id,
+      jobId: data.jobId.present ? data.jobId.value : this.jobId,
+      question: data.question.present ? data.question.value : this.question,
+      answer: data.answer.present ? data.answer.value : this.answer,
+      status: data.status.present ? data.status.value : this.status,
+      revision: data.revision.present ? data.revision.value : this.revision,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ApplicationAnswerRow(')
+          ..write('id: $id, ')
+          ..write('jobId: $jobId, ')
+          ..write('question: $question, ')
+          ..write('answer: $answer, ')
+          ..write('status: $status, ')
+          ..write('revision: $revision, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    jobId,
+    question,
+    answer,
+    status,
+    revision,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ApplicationAnswerRow &&
+          other.id == this.id &&
+          other.jobId == this.jobId &&
+          other.question == this.question &&
+          other.answer == this.answer &&
+          other.status == this.status &&
+          other.revision == this.revision &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class ApplicationAnswersCompanion
+    extends UpdateCompanion<ApplicationAnswerRow> {
+  final Value<String> id;
+  final Value<String> jobId;
+  final Value<String> question;
+  final Value<String> answer;
+  final Value<String> status;
+  final Value<int> revision;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const ApplicationAnswersCompanion({
+    this.id = const Value.absent(),
+    this.jobId = const Value.absent(),
+    this.question = const Value.absent(),
+    this.answer = const Value.absent(),
+    this.status = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ApplicationAnswersCompanion.insert({
+    required String id,
+    required String jobId,
+    required String question,
+    required String answer,
+    required String status,
+    required int revision,
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       jobId = Value(jobId),
+       question = Value(question),
+       answer = Value(answer),
+       status = Value(status),
+       revision = Value(revision),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<ApplicationAnswerRow> custom({
+    Expression<String>? id,
+    Expression<String>? jobId,
+    Expression<String>? question,
+    Expression<String>? answer,
+    Expression<String>? status,
+    Expression<int>? revision,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (jobId != null) 'job_id': jobId,
+      if (question != null) 'question': question,
+      if (answer != null) 'answer': answer,
+      if (status != null) 'status': status,
+      if (revision != null) 'revision': revision,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ApplicationAnswersCompanion copyWith({
+    Value<String>? id,
+    Value<String>? jobId,
+    Value<String>? question,
+    Value<String>? answer,
+    Value<String>? status,
+    Value<int>? revision,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return ApplicationAnswersCompanion(
+      id: id ?? this.id,
+      jobId: jobId ?? this.jobId,
+      question: question ?? this.question,
+      answer: answer ?? this.answer,
+      status: status ?? this.status,
+      revision: revision ?? this.revision,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (jobId.present) {
+      map['job_id'] = Variable<String>(jobId.value);
+    }
+    if (question.present) {
+      map['question'] = Variable<String>(question.value);
+    }
+    if (answer.present) {
+      map['answer'] = Variable<String>(answer.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (revision.present) {
+      map['revision'] = Variable<int>(revision.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ApplicationAnswersCompanion(')
+          ..write('id: $id, ')
+          ..write('jobId: $jobId, ')
+          ..write('question: $question, ')
+          ..write('answer: $answer, ')
+          ..write('status: $status, ')
+          ..write('revision: $revision, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $InterviewWorkspacesTable extends InterviewWorkspaces
     with TableInfo<$InterviewWorkspacesTable, InterviewWorkspace> {
   @override
@@ -18968,6 +19535,8 @@ abstract class _$CareerShopperDatabase extends GeneratedDatabase {
   late final $MaterialClaimsTable materialClaims = $MaterialClaimsTable(this);
   late final $ArtifactsTable artifacts = $ArtifactsTable(this);
   late final $AuditEventsTable auditEvents = $AuditEventsTable(this);
+  late final $ApplicationAnswersTable applicationAnswers =
+      $ApplicationAnswersTable(this);
   late final $InterviewWorkspacesTable interviewWorkspaces =
       $InterviewWorkspacesTable(this);
   late final $InterviewRevisionsTable interviewRevisions =
@@ -18978,6 +19547,10 @@ abstract class _$CareerShopperDatabase extends GeneratedDatabase {
       $InterviewExchangesTable(this);
   late final $InterviewSettingsTable interviewSettings =
       $InterviewSettingsTable(this);
+  late final Index applicationAnswerJob = Index(
+    'application_answer_job',
+    'CREATE INDEX application_answer_job ON application_answers (job_id, created_at)',
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -19013,11 +19586,13 @@ abstract class _$CareerShopperDatabase extends GeneratedDatabase {
     materialClaims,
     artifacts,
     auditEvents,
+    applicationAnswers,
     interviewWorkspaces,
     interviewRevisions,
     interviewPractices,
     interviewExchanges,
     interviewSettings,
+    applicationAnswerJob,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -22622,6 +23197,30 @@ final class $$JobsTableReferences
   }
 
   static MultiTypedResultKey<
+    $ApplicationAnswersTable,
+    List<ApplicationAnswerRow>
+  >
+  _applicationAnswersRefsTable(_$CareerShopperDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.applicationAnswers,
+        aliasName: 'jobs__id__application_answers__job_id',
+      );
+
+  $$ApplicationAnswersTableProcessedTableManager get applicationAnswersRefs {
+    final manager = $$ApplicationAnswersTableTableManager(
+      $_db,
+      $_db.applicationAnswers,
+    ).filter((f) => f.jobId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _applicationAnswersRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<
     $InterviewWorkspacesTable,
     List<InterviewWorkspace>
   >
@@ -22916,6 +23515,31 @@ class $$JobsTableFilterComposer
           }) => $$ApplicationsTableFilterComposer(
             $db: $db,
             $table: $db.applications,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> applicationAnswersRefs(
+    Expression<bool> Function($$ApplicationAnswersTableFilterComposer f) f,
+  ) {
+    final $$ApplicationAnswersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.applicationAnswers,
+      getReferencedColumn: (t) => t.jobId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ApplicationAnswersTableFilterComposer(
+            $db: $db,
+            $table: $db.applicationAnswers,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -23318,6 +23942,32 @@ class $$JobsTableAnnotationComposer
     return f(composer);
   }
 
+  Expression<T> applicationAnswersRefs<T extends Object>(
+    Expression<T> Function($$ApplicationAnswersTableAnnotationComposer a) f,
+  ) {
+    final $$ApplicationAnswersTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.applicationAnswers,
+          getReferencedColumn: (t) => t.jobId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ApplicationAnswersTableAnnotationComposer(
+                $db: $db,
+                $table: $db.applicationAnswers,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+
   Expression<T> interviewWorkspacesRefs<T extends Object>(
     Expression<T> Function($$InterviewWorkspacesTableAnnotationComposer a) f,
   ) {
@@ -23418,6 +24068,7 @@ class $$JobsTableTableManager
             bool jobSearchMatchesRefs,
             bool aiWorkOrdersRefs,
             bool applicationsRefs,
+            bool applicationAnswersRefs,
             bool interviewWorkspacesRefs,
             bool interviewRevisionsRefs,
             bool interviewPracticesRefs,
@@ -23511,6 +24162,7 @@ class $$JobsTableTableManager
                 jobSearchMatchesRefs = false,
                 aiWorkOrdersRefs = false,
                 applicationsRefs = false,
+                applicationAnswersRefs = false,
                 interviewWorkspacesRefs = false,
                 interviewRevisionsRefs = false,
                 interviewPracticesRefs = false,
@@ -23524,6 +24176,7 @@ class $$JobsTableTableManager
                     if (jobSearchMatchesRefs) db.jobSearchMatches,
                     if (aiWorkOrdersRefs) db.aiWorkOrders,
                     if (applicationsRefs) db.applications,
+                    if (applicationAnswersRefs) db.applicationAnswers,
                     if (interviewWorkspacesRefs) db.interviewWorkspaces,
                     if (interviewRevisionsRefs) db.interviewRevisions,
                     if (interviewPracticesRefs) db.interviewPractices,
@@ -23682,6 +24335,26 @@ class $$JobsTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (applicationAnswersRefs)
+                        await $_getPrefetchedData<
+                          JobRow,
+                          $JobsTable,
+                          ApplicationAnswerRow
+                        >(
+                          currentTable: table,
+                          referencedTable: $$JobsTableReferences
+                              ._applicationAnswersRefsTable(db),
+                          managerFromTypedResult: (p0) => $$JobsTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).applicationAnswersRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.jobId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                       if (interviewWorkspacesRefs)
                         await $_getPrefetchedData<
                           JobRow,
@@ -23770,6 +24443,7 @@ typedef $$JobsTableProcessedTableManager =
         bool jobSearchMatchesRefs,
         bool aiWorkOrdersRefs,
         bool applicationsRefs,
+        bool applicationAnswersRefs,
         bool interviewWorkspacesRefs,
         bool interviewRevisionsRefs,
         bool interviewPracticesRefs,
@@ -23787,6 +24461,7 @@ typedef $$JobSnapshotsTableCreateCompanionBuilder =
       required String descriptionHash,
       Value<String?> applicationUrl,
       Value<String?> compensationJson,
+      Value<String?> employmentType,
       required DateTime capturedAt,
       Value<int> rowid,
     });
@@ -23802,6 +24477,7 @@ typedef $$JobSnapshotsTableUpdateCompanionBuilder =
       Value<String> descriptionHash,
       Value<String?> applicationUrl,
       Value<String?> compensationJson,
+      Value<String?> employmentType,
       Value<DateTime> capturedAt,
       Value<int> rowid,
     });
@@ -23922,6 +24598,11 @@ class $$JobSnapshotsTableFilterComposer
 
   ColumnFilters<String> get compensationJson => $composableBuilder(
     column: $table.compensationJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get employmentType => $composableBuilder(
+    column: $table.employmentType,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -24058,6 +24739,11 @@ class $$JobSnapshotsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get employmentType => $composableBuilder(
+    column: $table.employmentType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get capturedAt => $composableBuilder(
     column: $table.capturedAt,
     builder: (column) => ColumnOrderings(column),
@@ -24130,6 +24816,11 @@ class $$JobSnapshotsTableAnnotationComposer
 
   GeneratedColumn<String> get compensationJson => $composableBuilder(
     column: $table.compensationJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get employmentType => $composableBuilder(
+    column: $table.employmentType,
     builder: (column) => column,
   );
 
@@ -24256,6 +24947,7 @@ class $$JobSnapshotsTableTableManager
                 Value<String> descriptionHash = const Value.absent(),
                 Value<String?> applicationUrl = const Value.absent(),
                 Value<String?> compensationJson = const Value.absent(),
+                Value<String?> employmentType = const Value.absent(),
                 Value<DateTime> capturedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => JobSnapshotsCompanion(
@@ -24269,6 +24961,7 @@ class $$JobSnapshotsTableTableManager
                 descriptionHash: descriptionHash,
                 applicationUrl: applicationUrl,
                 compensationJson: compensationJson,
+                employmentType: employmentType,
                 capturedAt: capturedAt,
                 rowid: rowid,
               ),
@@ -24284,6 +24977,7 @@ class $$JobSnapshotsTableTableManager
                 required String descriptionHash,
                 Value<String?> applicationUrl = const Value.absent(),
                 Value<String?> compensationJson = const Value.absent(),
+                Value<String?> employmentType = const Value.absent(),
                 required DateTime capturedAt,
                 Value<int> rowid = const Value.absent(),
               }) => JobSnapshotsCompanion.insert(
@@ -24297,6 +24991,7 @@ class $$JobSnapshotsTableTableManager
                 descriptionHash: descriptionHash,
                 applicationUrl: applicationUrl,
                 compensationJson: compensationJson,
+                employmentType: employmentType,
                 capturedAt: capturedAt,
                 rowid: rowid,
               ),
@@ -33750,6 +34445,398 @@ typedef $$AuditEventsTableProcessedTableManager =
       AuditEventRow,
       PrefetchHooks Function()
     >;
+typedef $$ApplicationAnswersTableCreateCompanionBuilder =
+    ApplicationAnswersCompanion Function({
+      required String id,
+      required String jobId,
+      required String question,
+      required String answer,
+      required String status,
+      required int revision,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$ApplicationAnswersTableUpdateCompanionBuilder =
+    ApplicationAnswersCompanion Function({
+      Value<String> id,
+      Value<String> jobId,
+      Value<String> question,
+      Value<String> answer,
+      Value<String> status,
+      Value<int> revision,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+final class $$ApplicationAnswersTableReferences
+    extends
+        BaseReferences<
+          _$CareerShopperDatabase,
+          $ApplicationAnswersTable,
+          ApplicationAnswerRow
+        > {
+  $$ApplicationAnswersTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $JobsTable _jobIdTable(_$CareerShopperDatabase db) =>
+      db.jobs.createAlias('application_answers__job_id__jobs__id');
+
+  $$JobsTableProcessedTableManager get jobId {
+    final $_column = $_itemColumn<String>('job_id')!;
+
+    final manager = $$JobsTableTableManager(
+      $_db,
+      $_db.jobs,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_jobIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ApplicationAnswersTableFilterComposer
+    extends Composer<_$CareerShopperDatabase, $ApplicationAnswersTable> {
+  $$ApplicationAnswersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get question => $composableBuilder(
+    column: $table.question,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get answer => $composableBuilder(
+    column: $table.answer,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$JobsTableFilterComposer get jobId {
+    final $$JobsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.jobId,
+      referencedTable: $db.jobs,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$JobsTableFilterComposer(
+            $db: $db,
+            $table: $db.jobs,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ApplicationAnswersTableOrderingComposer
+    extends Composer<_$CareerShopperDatabase, $ApplicationAnswersTable> {
+  $$ApplicationAnswersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get question => $composableBuilder(
+    column: $table.question,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get answer => $composableBuilder(
+    column: $table.answer,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$JobsTableOrderingComposer get jobId {
+    final $$JobsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.jobId,
+      referencedTable: $db.jobs,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$JobsTableOrderingComposer(
+            $db: $db,
+            $table: $db.jobs,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ApplicationAnswersTableAnnotationComposer
+    extends Composer<_$CareerShopperDatabase, $ApplicationAnswersTable> {
+  $$ApplicationAnswersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get question =>
+      $composableBuilder(column: $table.question, builder: (column) => column);
+
+  GeneratedColumn<String> get answer =>
+      $composableBuilder(column: $table.answer, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<int> get revision =>
+      $composableBuilder(column: $table.revision, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$JobsTableAnnotationComposer get jobId {
+    final $$JobsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.jobId,
+      referencedTable: $db.jobs,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$JobsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.jobs,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ApplicationAnswersTableTableManager
+    extends
+        RootTableManager<
+          _$CareerShopperDatabase,
+          $ApplicationAnswersTable,
+          ApplicationAnswerRow,
+          $$ApplicationAnswersTableFilterComposer,
+          $$ApplicationAnswersTableOrderingComposer,
+          $$ApplicationAnswersTableAnnotationComposer,
+          $$ApplicationAnswersTableCreateCompanionBuilder,
+          $$ApplicationAnswersTableUpdateCompanionBuilder,
+          (ApplicationAnswerRow, $$ApplicationAnswersTableReferences),
+          ApplicationAnswerRow,
+          PrefetchHooks Function({bool jobId})
+        > {
+  $$ApplicationAnswersTableTableManager(
+    _$CareerShopperDatabase db,
+    $ApplicationAnswersTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ApplicationAnswersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ApplicationAnswersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ApplicationAnswersTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> jobId = const Value.absent(),
+                Value<String> question = const Value.absent(),
+                Value<String> answer = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<int> revision = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ApplicationAnswersCompanion(
+                id: id,
+                jobId: jobId,
+                question: question,
+                answer: answer,
+                status: status,
+                revision: revision,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String jobId,
+                required String question,
+                required String answer,
+                required String status,
+                required int revision,
+                required DateTime createdAt,
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => ApplicationAnswersCompanion.insert(
+                id: id,
+                jobId: jobId,
+                question: question,
+                answer: answer,
+                status: status,
+                revision: revision,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$ApplicationAnswersTable, ApplicationAnswerRow>(
+                    table,
+                  ),
+                  $$ApplicationAnswersTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({jobId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (jobId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.jobId,
+                                referencedTable:
+                                    $$ApplicationAnswersTableReferences
+                                        ._jobIdTable(db),
+                                referencedColumn:
+                                    $$ApplicationAnswersTableReferences
+                                        ._jobIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ApplicationAnswersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$CareerShopperDatabase,
+      $ApplicationAnswersTable,
+      ApplicationAnswerRow,
+      $$ApplicationAnswersTableFilterComposer,
+      $$ApplicationAnswersTableOrderingComposer,
+      $$ApplicationAnswersTableAnnotationComposer,
+      $$ApplicationAnswersTableCreateCompanionBuilder,
+      $$ApplicationAnswersTableUpdateCompanionBuilder,
+      (ApplicationAnswerRow, $$ApplicationAnswersTableReferences),
+      ApplicationAnswerRow,
+      PrefetchHooks Function({bool jobId})
+    >;
 typedef $$InterviewWorkspacesTableCreateCompanionBuilder =
     InterviewWorkspacesCompanion Function({
       required String jobId,
@@ -35727,6 +36814,8 @@ class $CareerShopperDatabaseManager {
       $$ArtifactsTableTableManager(_db, _db.artifacts);
   $$AuditEventsTableTableManager get auditEvents =>
       $$AuditEventsTableTableManager(_db, _db.auditEvents);
+  $$ApplicationAnswersTableTableManager get applicationAnswers =>
+      $$ApplicationAnswersTableTableManager(_db, _db.applicationAnswers);
   $$InterviewWorkspacesTableTableManager get interviewWorkspaces =>
       $$InterviewWorkspacesTableTableManager(_db, _db.interviewWorkspaces);
   $$InterviewRevisionsTableTableManager get interviewRevisions =>

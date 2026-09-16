@@ -12,6 +12,7 @@ Look across confirmed career evidence for domain experience, product/customer un
 const jobEvaluationScoringInstructions =
     '''Submit personal_fit_score and attainability_score as integers from 0 through 100. Submit confidence as a number from 0 through 1 inclusive: for 78% confidence, use 0.78, not 78.
 Score the opportunity against the posting's stated requirements and responsibilities, using confirmed applicant facts and preferences. Personal fit includes alignment with the work AND the company's domain, products and customers, including supported interests and relevant credentials. Give meaningful positive weight to a specific domain or personal connection and explain its effect; do not reduce fit to technology keywords. Attainability measures supported qualification gaps and concrete hiring or practical barriers. Domain experience may strengthen attainability when it addresses actual role requirements; an interest alone does not prove qualifications. Do not award an automatic perfect score or a fixed bonus for a shared interest; retain material conflicts and gaps.
+Check mandatory qualifications before scoring and submit unmet_requirements explicitly, using [] when none are confirmed unmet. An explicit required degree with no stated experience alternative is a blocking requirement when confirmed education does not meet it. Do not assume an employer will waive it because the applicant has strong experience. Distinguish required/minimum qualifications from preferred/desirable ones. Where the posting expressly permits equivalent experience or another route, evaluate that route before declaring the requirement unmet. Missing education information is unknown, not proof of no degree; confirmed highest education or an explicit no-degree statement can establish the gap. Apply the same reasoning to explicit mandatory licenses, work eligibility, location or other non-negotiable constraints. For each confirmed unmet requirement, provide the requirement, an exact supporting quote from the saved posting, the applicant evidence, and its current confirmed fact revision IDs. A confirmed unmet requirement excludes the job from automatic Inbox placement regardless of weighted score or search threshold. Explain the blocker in summary and reflect it in attainability; do not soften it into a minor concern. Never invent blockers from preferences, missing details, or unstated requirements.
 $companyContextInstructions
 Missing detail is not a mismatch. Do not lower either score or impose a score ceiling merely because a posting is brief, vague, or omits technologies, responsibilities, seniority, compensation, or other details. Do not invent unstated requirements or assume the applicant lacks experience with an unspecified stack. When confirmed evidence meets the stated requirements, score that match strongly even if the posting is sparse.
 Represent missing or ambiguous information in unknowns and confidence, separately from fit and attainability. Confidence measures certainty in the assessment, not suitability; it is not a score multiplier. Explain actual score deductions with specific evidence. Explicit contradictory requirements, confirmed skill gaps, or concrete conflicts with applicant constraints can affect the appropriate score; distinguish those from information that simply was not supplied. Never assume an unknown qualification is met or failed. A fully retrieved but terse posting can be evaluated; a failed or truncated retrieval must be reported rather than scored as a poor match.''';
@@ -101,12 +102,27 @@ class InboxJob {
     this.attainabilityScore,
     this.evaluationSummary,
     this.readyToApply = false,
+    this.documentsOutdated = false,
     this.aiError,
     this.applicationOutcome = ApplicationOutcome.active,
     this.employerLogoPng,
     this.employerLogoSourceUrl,
     this.sourceFamily = 'unknown',
+    this.compensationText,
+    this.employmentType,
+    this.nextInterviewStage,
+    this.unmetRequirements = const [],
   });
+
+  bool get canRegenerateDocuments =>
+      readyToApply &&
+      reviewState == ReviewState.approved &&
+      [
+        ApplicationStatus.notApplied,
+        ApplicationStatus.readyToApply,
+      ].contains(applicationStatus) &&
+      applicationOutcome == ApplicationOutcome.active &&
+      availability != JobAvailability.closed;
 
   final JobId id;
   final EmployerId? employerId;
@@ -124,11 +140,16 @@ class InboxJob {
   final int? personalFitScore;
   final int? attainabilityScore;
   final String? evaluationSummary;
+  final List<Map<String, Object?>> unmetRequirements;
   final bool readyToApply;
+  final bool documentsOutdated;
   final String? aiError;
   final Uint8List? employerLogoPng;
   final String? employerLogoSourceUrl;
   final String sourceFamily;
+  final String? compensationText;
+  final String? employmentType;
+  final Map<String, Object?>? nextInterviewStage;
 }
 
 class NormalizedListing {
@@ -152,6 +173,7 @@ class NormalizedListing {
     this.compensationMinimum,
     this.compensationMaximum,
     this.compensationCurrency,
+    this.compensationText,
     this.rawPayloadJson,
   });
 
@@ -165,6 +187,7 @@ class NormalizedListing {
   final int? compensationMinimum;
   final int? compensationMaximum;
   final String? compensationCurrency;
+  final String? compensationText;
   final String title;
   final String employerName;
   final String normalizedEmployerName;

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -34,6 +35,7 @@ Future<void> main() async {
     runner: StdioAcpAgentRunner(permissionPrompt: approvals.request),
   );
   await harnesses.resumePendingSearchAnalysis();
+  unawaited(harnesses.resumeQueuedMaterialGeneration());
   await harnesses.startInterviewPreparationMonitor();
   await harnesses.monitorWorkExpiry();
   final configuration = ConfigurationRepository(database, jobs);

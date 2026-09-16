@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:careershopper/src/domain/job.dart';
 import 'package:careershopper/src/ingestion/normalization.dart';
 import 'package:careershopper/src/storage/database.dart';
@@ -16,6 +18,81 @@ void main() {
   });
 
   tearDown(() => database.close());
+
+  test(
+    'terms survive imports and update without description changes',
+    () async {
+      final id = (await repository.ingest(
+        _listing(
+          employmentType: 'PartTime',
+          compensationText: 'USD 65 – 85 per hour',
+        ),
+      )).jobId;
+      final first = (await repository.getJob(id))!;
+      expect(first.employmentType, 'Part-time');
+      expect(first.compensationText, 'USD 65 – 85 per hour');
+      await repository.ingestIntoExistingJob(id, _listing());
+      expect(
+        (await repository.getJob(id))!.compensationText,
+        first.compensationText,
+      );
+      expect((await repository.getJob(id))!.employmentType, 'Part-time');
+      await repository.ingestIntoExistingJob(
+        id,
+        _listing(
+          employmentType: 'Contract',
+          compensationText: 'USD 90 per hour',
+        ),
+      );
+      final updated = (await repository.watchAllJobs().first).single;
+      expect(updated.compensationText, 'USD 90 per hour');
+      expect(updated.employmentType, 'Contract');
+      expect(await database.select(database.jobSnapshots).get(), hasLength(2));
+    },
+  );
+
+  test(
+    'v19 upgrade recovers saved source terms without changing annual filters',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('careershopper-terms-');
+      final file = File('${dir.path}/db.sqlite');
+      var db = CareerShopperDatabase(NativeDatabase(file));
+      try {
+        final id = (await JobRepository(db).ingest(
+          _listing(
+            sourceFamily: 'indeed',
+            rawPayloadJson: jsonEncode({
+              'attributes': [
+                {'label': 'Part-time'},
+                {'label': 'Contract'},
+              ],
+              'compensation': {
+                'currencyCode': 'USD',
+                'baseSalary': {
+                  'unitOfWork': 'HOUR',
+                  'range': {'min': 65.5, 'max': 85},
+                },
+              },
+            }),
+          ),
+        )).jobId;
+        await db.customStatement(
+          'ALTER TABLE job_snapshots DROP COLUMN employment_type',
+        );
+        await db.customStatement('PRAGMA user_version = 19');
+        await db.close();
+        db = CareerShopperDatabase(NativeDatabase(file));
+        final job = (await JobRepository(db).getJob(id))!;
+        expect(job.employmentType, 'Part-time · Contract');
+        expect(job.compensationText, 'USD 65.5 – 85 · per hour');
+        final snapshot = await db.select(db.jobSnapshots).getSingle();
+        expect(jsonDecode(snapshot.compensationJson!)['maximum'], isNull);
+      } finally {
+        await db.close();
+        await dir.delete(recursive: true);
+      }
+    },
+  );
 
   test('job list retains original source across later imports', () async {
     final first = await repository.ingest(_listing(sourceFamily: 'linkedin'));
@@ -180,11 +257,21 @@ void main() {
   });
 }
 
-NormalizedListing _listing({String sourceFamily = 'test'}) {
+NormalizedListing _listing({
+  String sourceFamily = 'test',
+  String? employmentType,
+  String? compensationText,
+  String? rawPayloadJson,
+}) {
   const description = 'Build reliable backend systems.';
   return NormalizedListing(
     sourceFamily: sourceFamily,
-    adapterId: '${sourceFamily}_v1',
+    employmentType: employmentType,
+    compensationText: compensationText,
+    rawPayloadJson: rawPayloadJson,
+    adapterId: sourceFamily == 'indeed'
+        ? 'indeed_public_search_v1'
+        : '${sourceFamily}_v1',
     providerJobId: null,
     title: 'Backend Engineer',
     employerName: 'Example, Inc.',

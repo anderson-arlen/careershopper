@@ -62,8 +62,16 @@ final interviewStageSchema = interviewObject({
   'competencies': interviewStrings,
   'format': interviewText(200),
   'duration_minutes': interviewNumber(1, 480, integer: true),
-  'scheduled_at': interviewText(80),
-  'timezone': interviewText(100),
+  'scheduled_at': {
+    ...interviewText(80),
+    'description':
+        'Appointment start as ISO date/time with UTC or numeric offset; empty when unscheduled. Saved in UTC. With status=scheduled, the stage completes automatically after duration_minutes.',
+  },
+  'timezone': {
+    ...interviewText(100),
+    'description':
+        'Descriptive timezone label. The scheduled_at offset determines the instant; the UI displays computer local time.',
+  },
   'status': interviewEnum([
     'planned',
     'scheduled',
@@ -365,15 +373,47 @@ Map<String, Object?> newInterviewStage(String id, String name) => {
   'weights': {for (final d in interviewDimensions) d: 1},
 };
 
+DateTime? interviewStageStart(Map<String, Object?> stage) =>
+    DateTime.tryParse(stage['scheduled_at'] as String? ?? '');
+
+DateTime? interviewStageEnd(Map<String, Object?> stage) => interviewStageStart(
+  stage,
+)?.add(Duration(minutes: (stage['duration_minutes'] as num).toInt()));
+
+Map<String, Object?>? nextScheduledInterviewStage(
+  List<Map<String, Object?>> stages, {
+  DateTime? now,
+}) {
+  final time = now ?? DateTime.now();
+  final scheduled = stages
+      .where(
+        (s) =>
+            s['archived'] != true &&
+            s['status'] == 'scheduled' &&
+            interviewStageEnd(s)?.isAfter(time) == true,
+      )
+      .toList();
+  scheduled.sort(
+    (a, b) => interviewStageStart(a)!.compareTo(interviewStageStart(b)!),
+  );
+  return scheduled.firstOrNull;
+}
+
 Map<String, Object?>? currentInterviewStage(
-  List<Map<String, Object?>> stages,
-) => stages
-    .where(
-      (s) =>
-          s['archived'] != true &&
-          ['planned', 'scheduled'].contains(s['status']),
-    )
-    .firstOrNull;
+  List<Map<String, Object?>> stages, {
+  DateTime? now,
+}) =>
+    nextScheduledInterviewStage(stages, now: now) ??
+    stages
+        .where(
+          (s) =>
+              s['archived'] != true &&
+              ['planned', 'scheduled'].contains(s['status']) &&
+              !(s['status'] == 'scheduled' &&
+                  interviewStageEnd(s)?.isAfter(now ?? DateTime.now()) ==
+                      false),
+        )
+        .firstOrNull;
 
 const interviewPersonalities = {
   'supportive':

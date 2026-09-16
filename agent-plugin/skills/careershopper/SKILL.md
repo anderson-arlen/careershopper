@@ -67,7 +67,12 @@ binds these IDs to the work order internally. Never copy or construct UUIDs.
 
 Resume content also has Core skills with saved proficiency and context notes.
 Use their short IDs as evidence for generated skill groups and other prose.
-Respect proficiency limits and stated gaps; these notes are not printed verbatim.
+Lead with the strongest relevant skills and use "expert" only where supported.
+Describe other supported skills as "experience in" or "additional experience in."
+Never publish proficiency grades or weakness labels such as "low proficiency,"
+"weak," "novice," or "beginner" in resumes or cover letters. Saved assessments
+constrain claims; they are not copy to publish. Keep expertise descriptors scoped
+to the skills they support, and answer direct proficiency questions honestly.
 
 The resume plan contains `professional_headline`, `summary` (one object),
 `direct_match` and `core_skills` (lists), and `selected_ids` (a flat list of
@@ -283,7 +288,15 @@ are excluded. The default `view: "all"` retains hidden and historical jobs.
 Use `job_get` before evaluating. Ground applicant-specific evidence in confirmed
 career-fact revision IDs and quote concise posting evidence. Submit fit and
 attainability separately with `job_evaluation_submit`; CareerShopper computes the
-overall opportunity score and applies the saved-search threshold.
+overall opportunity score and applies the saved-search threshold. First check
+mandatory qualifications and supply unmet_requirements (an empty array when no
+confirmed blocker exists). A confirmed unmet required degree or other mandatory
+qualification excludes automatic Inbox placement regardless of scores. Do not
+assume strong experience waives a mandatory degree unless the posting explicitly
+allows an experience alternative. Preferred degrees are not blockers; missing
+education information is unknown. Quote the saved posting and cite current
+confirmed applicant fact revisions for every blocker. These exclusions preserve
+explicit user approvals/discards and do not change application status.
 Follow the scoring guidance in the tool contract: judge the stated requirements
 against confirmed applicant evidence. Missing posting details belong in
 `unknowns` and `confidence`, not deductions from fit or attainability. Meeting
@@ -323,13 +336,18 @@ section for the full boundary. Leave submission to the user.
 
 For essay/free-text application answers, call `health_get`, then
 `application_answer_generate` with the question, relevant posting text or URL,
-and any word/character limit. Set confirmed: true only for the user's requested
+and any word/character limit. Keep simple motivation answers to a focused short
+paragraph; do not expand the returned answer into a cover letter. Set confirmed: true only for the user's requested
 answer or revision. No job ID is needed. The configured writer retrieves current
 confirmed profile facts and chooses relevant evidence; do not preselect context
 or replace it with memory or a generated resume. Return the tool's answer in chat.
 If it returns missing_information, relay the missing items to the user, not a
-fabricated answer. Revisions pass previous_answer and revision_feedback; no
-answer history is saved. Do not fall back to another model on failure unless
+fabricated answer. Revisions pass previous_answer and revision_feedback; generation
+does not save answers. To keep user-selected wording, use application_answer_save
+with the exact question/answer and the correct job_id. Use draft unless the user
+confirms the exact text was submitted. Read application_answers_list before
+editing a saved answer and reuse its ID/revision. Saved answers are records, not
+confirmed career evidence. Do not fall back to another model on failure unless
 the user explicitly requests that. Simple factual fields still use profile_get.
 Answer drafting does not authorize profile, document, or application-state writes.
 

@@ -489,6 +489,10 @@ void main() {
       await jobs.queueManualUrl(Uri.parse('https://example.test/new-job'));
       final defaultStats = data(await call(db, 'statistics_get', {}));
       expect(defaultStats['period'], 'all_time');
+      expect(defaultStats['conversion_ratios'], {
+        'jobs_found_per_application': null,
+        'applications_per_interview': null,
+      });
       final sankey = defaultStats['sankey'] as Map;
       expect(sankey['source_attribution'], 'first_observed_source');
       for (final node in (sankey['nodes'] as List).where(
@@ -515,6 +519,19 @@ void main() {
         'target': 'found',
         'count': 1,
       });
+      final interviewJob = await jobs.queueManualUrl(
+        Uri.parse('https://example.test/interview-job'),
+      );
+      await jobs.setApplicationStatus(
+        interviewJob,
+        ApplicationStatus.interviewing,
+        actor: 'user',
+        origin: 'test',
+      );
+      expect(data(await call(db, 'statistics_get', {}))['conversion_ratios'], {
+        'jobs_found_per_application': 2.0,
+        'applications_per_interview': 1.0,
+      });
       for (final period in StatisticsPeriod.values) {
         final response = data(
           await call(db, 'statistics_get', {'period': period.value}),
@@ -523,6 +540,7 @@ void main() {
             .watchStatistics(changedSince: period.start(DateTime.now()))
             .first;
         expect(response['counts'], ui.toJson());
+        expect(response['conversion_ratios'], ui.conversionRatiosToJson());
         expect(response['sankey'], ui.sankeyToJson());
         expect(response['date_basis'], 'job_last_state_change');
       }

@@ -81,6 +81,36 @@ class _StatisticsPageState extends State<StatisticsPage> {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final width = constraints.maxWidth >= 600
+                            ? (constraints.maxWidth - 16) / 2
+                            : constraints.maxWidth;
+                        return Wrap(
+                          spacing: 16,
+                          runSpacing: 16,
+                          children: [
+                            SizedBox(
+                              width: width,
+                              child: _ConversionCard(
+                                title: 'Jobs found per application',
+                                ratio: stats.jobsFoundPerApplication,
+                                icon: Icons.search,
+                              ),
+                            ),
+                            SizedBox(
+                              width: width,
+                              child: _ConversionCard(
+                                title: 'Applications per interview',
+                                ratio: stats.applicationsPerInterview,
+                                icon: Icons.record_voice_over_outlined,
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 32),
                     if (stats.found == 0) ...[
                       const Text('No jobs changed state in this period.'),
                       const SizedBox(height: 20),
@@ -115,6 +145,56 @@ class _StatisticsPageState extends State<StatisticsPage> {
               },
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ConversionCard extends StatelessWidget {
+  const _ConversionCard({
+    required this.title,
+    required this.ratio,
+    required this.icon,
+  });
+
+  final String title;
+  final double? ratio;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final value = ratio?.toStringAsFixed(1).replaceFirst(RegExp(r'\.0$'), '');
+    return Card.filled(
+      margin: EdgeInsets.zero,
+      color: theme.colorScheme.primaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: DefaultTextStyle.merge(
+          style: TextStyle(color: theme.colorScheme.onPrimaryContainer),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, color: theme.colorScheme.onPrimaryContainer),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(title, style: const TextStyle(fontSize: 18)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                value ?? '—',
+                style: const TextStyle(
+                  fontSize: 36,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

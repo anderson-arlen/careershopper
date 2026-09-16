@@ -76,7 +76,7 @@ class _ApplicationMaterialsPanelState extends State<ApplicationMaterialsPanel> {
       stream: _materials,
       builder: (context, snapshot) {
         final draft = snapshot.data;
-        final generating = status.data == 'running';
+        final generating = ['queued', 'running'].contains(status.data);
         return Card.outlined(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -89,7 +89,9 @@ class _ApplicationMaterialsPanelState extends State<ApplicationMaterialsPanel> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  generating
+                  status.data == 'queued'
+                      ? 'Document regeneration is queued. Follow progress in AI → Activity.'
+                      : generating
                       ? 'Drafting resume and cover letter… Follow progress in AI → Activity.'
                       : _dirty
                       ? 'Unsaved Markdown edits. Save or revert them before regenerating, exporting, or applying.'
@@ -100,6 +102,8 @@ class _ApplicationMaterialsPanelState extends State<ApplicationMaterialsPanel> {
                             : 'Generation paused after an error. Your previous documents and new staged work are preserved. Choose Resume generation or Generate from scratch.'
                       : draft == null
                       ? 'Generate a tailored resume and cover letter to enable Apply. Review is optional.'
+                      : draft.outdated
+                      ? 'Documents out of date: your profile has changed. Regenerate only if you want to update them; you can still export or apply with this saved pair.'
                       : draft.reviewed
                       ? 'Resume and cover letter reviewed.'
                       : 'Documents ready to apply. You can optionally review or edit them here.',

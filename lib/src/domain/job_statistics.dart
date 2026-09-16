@@ -129,6 +129,15 @@ class JobStatistics {
   final Map<String, int> sources;
   final Map<JobFlowBranch, int> branches;
 
+  double? get jobsFoundPerApplication => applied == 0 ? null : found / applied;
+  double? get applicationsPerInterview =>
+      interviewed == 0 ? null : applied / interviewed;
+
+  Map<String, double?> conversionRatiosToJson() => {
+    'jobs_found_per_application': jobsFoundPerApplication,
+    'applications_per_interview': applicationsPerInterview,
+  };
+
   Map<JobFlowBranch, int> get _flowBranches => branches.isEmpty
       ? {
           JobFlowBranch.inbox: found - applied,

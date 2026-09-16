@@ -40,7 +40,7 @@ final _practice = {'practice_id': interviewId};
 final interviewToolDefinitions = <Map<String, Object?>>[
   _tool(
     'interview_get',
-    'Read the job interview ladder, research, questions, selected application context, revision history, cached company-logo availability/source, and read-only automatic preparation settings. current_stage is the first non-archived planned/scheduled stage in ladder order. questions.stage_targets reports available versus target primary questions for each active stage.',
+    'Read the job interview ladder, research, questions, selected application context (including saved submitted questions/answers in payload.application_answers), revision history, cached company-logo availability/source, and read-only automatic preparation settings. current_stage is the earliest upcoming or ongoing scheduled stage, falling back to the first unfinished stage in ladder order. next_scheduled_stage exposes the next appointment. Scheduled stages automatically become completed after scheduled_at plus duration_minutes, including after reopening; this records elapsed schedule time, not attendance or a hiring outcome. questions.stage_targets reports available versus target primary questions for each active stage.',
     _job,
   ),
   _tool(
@@ -50,7 +50,7 @@ final interviewToolDefinitions = <Map<String, Object?>>[
   ),
   _tool(
     'interview_stages_save',
-    'Save the complete ordered ladder with stable stage IDs. Removed stages are archived; archived history survives. Explicit user edits only.',
+    'Save the complete ordered ladder with stable stage IDs. Removed stages are archived; archived history survives. Explicit user edits only. Set scheduled_at to an ISO date/time with UTC or numeric offset, duration_minutes to its expected length, and status=scheduled to schedule a stage. Times are saved in UTC and displayed in computer local time; timezone is descriptive metadata. Empty scheduled_at removes the time. Use planned, completed, skipped, or cancelled for manual status changes; only scheduled stages auto-complete after their expected end.',
     {..._edit, 'stages': interviewLadderSchema},
     write: true,
     confirmation: true,
@@ -113,7 +113,7 @@ final interviewToolDefinitions = <Map<String, Object?>>[
   ),
   _tool(
     'interview_practice_start',
-    'Start a user-requested practice. Omit stage_id to use the current stage (first non-archived planned/scheduled stage in ladder order); practice never advances the real interview ladder. Omit settings.difficulty for automatic progression: level 2 initially, +1 per two completed practices for this job/stage, capped at 5. Set it only for a user-requested fixed level. Paused/abandoned attempts do not advance; retries/resumes retain the pinned level. Pins stage, research, selected application documents, confirmed resume evidence, a randomized dependency-respecting question order, exposure counts, settings, and rubric. New runs prefer difficulty-appropriate questions, randomizing among equally suitable least-practiced eligible questions; resumes keep their order. Use a time-appropriate subset and keep prerequisite questions before dependents. client_request_id makes retries safe. Authorizes routine checkpoints and state changes for this practice.',
+    'Start a user-requested practice. Omit stage_id to use the current stage (earliest upcoming/ongoing scheduled stage, otherwise first unfinished stage in ladder order); practice never advances the real interview ladder. Omit settings.difficulty for automatic progression: level 2 initially, +1 per two completed practices for this job/stage, capped at 5. Set it only for a user-requested fixed level. Paused/abandoned attempts do not advance; retries/resumes retain the pinned level. Pins stage, research, selected application documents, confirmed resume evidence, a randomized dependency-respecting question order, exposure counts, settings, and rubric. New runs prefer difficulty-appropriate questions, randomizing among equally suitable least-practiced eligible questions; resumes keep their order. Use a time-appropriate subset and keep prerequisite questions before dependents. client_request_id makes retries safe. Authorizes routine checkpoints and state changes for this practice.',
     {
       ..._job,
       'stage_id': interviewId,

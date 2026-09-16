@@ -7,6 +7,9 @@ import 'package:careershopper/src/protocol/mcp_server.dart';
 import 'package:careershopper/src/storage/ai_harness_repository.dart';
 import 'package:careershopper/src/storage/database.dart';
 import 'package:careershopper/src/storage/job_repository.dart';
+import 'package:careershopper/src/storage/listing_availability_service.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:drift/native.dart';
 import 'package:drift/drift.dart' show driftRuntimeOptions, Value;
 import 'package:flutter_test/flutter_test.dart';
@@ -50,9 +53,79 @@ void main() {
     }
   });
   tearDown(() async {
+    await harness.stopWorkExpiryMonitor();
     await database.close();
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = false;
   });
+
+  for (final reopen in [false, true]) {
+    test(
+      'rate-limited search resumes the same item and session (reopen: $reopen)',
+      () async {
+        final availability = ListingAvailabilityService(
+          database,
+          clientFactory: () => MockClient(
+            (_) async => http.Response('', 429, headers: {'retry-after': '1'}),
+          ),
+        );
+        harness = AiHarnessRepository(
+          database,
+          runner: runner,
+          availability: availability,
+        );
+        await harness.monitorWorkExpiry();
+        await harness.dispatchSearchAnalysis(
+          jobs,
+          savedSearchId: 'engineering',
+        );
+        await _waitFor(() => runner.requests.length == 1);
+        final original = runner.requests.single;
+        await availability.fetchPosting(jobs.first);
+        runner.complete(0);
+        await harness.watchConversations().firstWhere(
+          (rows) => rows.single.status == 'queued',
+        );
+        final waiting = await database
+            .select(database.aiWorkOrders)
+            .getSingle();
+        expect((jsonDecode(waiting.scopeJson) as Map)['retry_at'], isNotNull);
+        expect(waiting.leasedUntil, isNull);
+        expect(
+          (await database.select(database.aiWorkItems).get()).map(
+            (i) => i.status,
+          ),
+          everyElement('queued'),
+        );
+        if (reopen) {
+          await harness.stopWorkExpiryMonitor();
+          harness = AiHarnessRepository(
+            database,
+            runner: runner,
+            availability: availability,
+          );
+          expect(await harness.resumePendingSearchAnalysis(), 1);
+          await harness.monitorWorkExpiry();
+        }
+        expect(runner.requests, hasLength(1));
+        await _waitFor(() => runner.requests.length == 2);
+        expect(runner.requests.last.jobId, original.jobId);
+        expect(runner.requests.last.workOrderId, original.workOrderId);
+        expect(runner.requests.last.existingSessionId, 'search-session');
+        for (var i = 1; i <= jobs.length; i++) {
+          await _waitFor(() => runner.requests.length == i + 1);
+          await _evaluate(database, runner.requests.last);
+          runner.complete(i);
+        }
+        await harness.watchConversations().firstWhere(
+          (rows) => rows.single.status == 'completed',
+        );
+        expect(
+          await database.select(database.jobEvaluations).get(),
+          hasLength(3),
+        );
+      },
+    );
+  }
 
   for (final linked in [true, false]) {
     test(
@@ -468,8 +541,30 @@ void main() {
         orderId: first.workOrderId,
       );
       expect(outside, contains('error'));
+      expect(
+        (outside['error'] as Map)['message'],
+        contains('received ${jobs.last}'),
+      );
+      expect(
+        (outside['error'] as Map)['message'],
+        contains('current assignment is ${jobs.first}'),
+      );
       runner.complete(0); // Missing evaluation fails this item only.
       await _waitFor(() => runner.requests.length == 2);
+      final stale = await _call(
+        database,
+        'job_evaluation_submit',
+        _evaluation(jobs.first),
+        orderId: first.workOrderId,
+      );
+      expect(
+        (stale['error'] as Map)['message'],
+        contains('current assignment is ${jobs[1]}'),
+      );
+      expect(
+        (await JobRepository(database).getJob(jobs.first))!.overallScore,
+        isNull,
+      );
       await _evaluate(database, runner.requests.last);
       final duplicate = await _call(
         database,
@@ -498,6 +593,7 @@ Map<String, Object?> _evaluation(String jobId) => {
   'job_id': jobId,
   'personal_fit_score': 80,
   'attainability_score': 75,
+  'unmet_requirements': <Object?>[],
   'confidence': 0.5,
   'summary': 'Synthetic evaluation for recovery testing.',
 };

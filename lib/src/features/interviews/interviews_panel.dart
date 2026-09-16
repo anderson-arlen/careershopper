@@ -155,6 +155,108 @@ class _InterviewsPanelState extends State<InterviewsPanel> {
     });
   }
 
+  Widget _stageFlow() {
+    final visible = stages.where((s) => s['archived'] != true).toList();
+    final current = currentInterviewStage(stages)?['id'];
+    final colors = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _heading('Interview stages'),
+        const Text(
+          'Select a stage to schedule it or change its status. Scheduled stages complete automatically after their start time plus duration.',
+        ),
+        const SizedBox(height: 12),
+        if (visible.isEmpty)
+          const Text('Add your first stage to schedule an interview.'),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final (index, stage) in visible.indexed) ...[
+                  if (index > 0)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Icon(Icons.arrow_forward, color: colors.outline),
+                    ),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      minWidth: 225,
+                      maxWidth: 225,
+                      minHeight: 190,
+                    ),
+                    child: Card(
+                      margin: EdgeInsets.zero,
+                      color: stage['id'] == current
+                          ? colors.primaryContainer
+                          : colors.surfaceContainer,
+                      child: InkWell(
+                        key: ValueKey('interview-stage-${stage['id']}'),
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: busy ? null : () => _stage(stage),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(switch (stage['status']) {
+                                    'completed' => Icons.check_circle,
+                                    'scheduled' => Icons.event,
+                                    'cancelled' => Icons.cancel_outlined,
+                                    'skipped' => Icons.skip_next,
+                                    _ => Icons.radio_button_unchecked,
+                                  }),
+                                  const SizedBox(width: 8),
+                                  Text(_label(stage['status']! as String)),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                '${index + 1}. ${stage['name']}',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                interviewStageStart(stage) == null
+                                    ? (stage['status'] == 'completed'
+                                          ? 'Date not recorded'
+                                          : 'Not scheduled')
+                                    : _appointment(
+                                        context,
+                                        interviewStageStart(stage)!,
+                                      ),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text('${stage['duration_minutes']} minutes'),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        TextButton.icon(
+          onPressed: busy ? null : _stage,
+          icon: const Icon(Icons.add),
+          label: const Text('Add stage'),
+        ),
+      ],
+    );
+  }
+
   Future<void> _context() async {
     final expected = revision;
     final materials = await widget.repository.materials(widget.jobId);
@@ -293,6 +395,7 @@ class _InterviewsPanelState extends State<InterviewsPanel> {
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
           if (section == 'Overview') ...[
+            _stageFlow(),
             _heading('Practice in your voice harness'),
             Card(
               margin: const EdgeInsets.only(top: 4, bottom: 12),
@@ -303,7 +406,9 @@ class _InterviewsPanelState extends State<InterviewsPanel> {
                   children: [
                     Text(
                       currentInterviewStage(stages) == null
-                          ? 'No current stage yet'
+                          ? (stages.isEmpty
+                                ? 'No current stage yet'
+                                : 'No unfinished stages')
                           : 'Current stage: ${currentInterviewStage(stages)!['name']}',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
@@ -863,6 +968,12 @@ class _InterviewsPanelState extends State<InterviewsPanel> {
   }
 }
 
+String _appointment(BuildContext context, DateTime value) {
+  final date = value.toLocal();
+  final locale = MaterialLocalizations.of(context);
+  return '${locale.formatMediumDate(date)}, ${date.year}\n${locale.formatTimeOfDay(TimeOfDay.fromDateTime(date))} ${date.timeZoneName}';
+}
+
 String _when(BuildContext context, Object? value) {
   final date = DateTime.tryParse('$value')?.toLocal();
   if (date == null) return '$value';
@@ -937,15 +1048,7 @@ class _StageDialog extends StatefulWidget {
 class _StageDialogState extends State<_StageDialog> {
   late final value = interviewMap(jsonDecode(jsonEncode(widget.stage)));
   late final fields = {
-    for (final k in [
-      'name',
-      'purpose',
-      'format',
-      'duration_minutes',
-      'scheduled_at',
-      'timezone',
-      'notes',
-    ])
+    for (final k in ['name', 'purpose', 'format', 'duration_minutes', 'notes'])
       k: TextEditingController(text: '${value[k]}'),
     'competencies': TextEditingController(
       text: (value['competencies'] as List).join('\n'),
@@ -955,7 +1058,36 @@ class _StageDialogState extends State<_StageDialog> {
     for (final e in interviewMap(value['weights']).entries)
       e.key: TextEditingController(text: '${e.value}'),
   };
+  late DateTime? scheduled = interviewStageStart(value)?.toLocal();
   String? error;
+
+  Future<void> _schedule() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: scheduled ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: scheduled == null
+          ? const TimeOfDay(hour: 9, minute: 0)
+          : TimeOfDay.fromDateTime(scheduled!),
+    );
+    if (time == null || !mounted) return;
+    setState(() {
+      scheduled = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        time.hour,
+        time.minute,
+      );
+      value['status'] = 'scheduled';
+    });
+  }
+
   @override
   void dispose() {
     for (final c in [...fields.values, ...weights.values]) {
@@ -1058,6 +1190,61 @@ class _StageDialogState extends State<_StageDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             _input(fields['name']!, 'Stage name'),
+            Text(
+              scheduled == null
+                  ? 'Not scheduled'
+                  : _appointment(context, scheduled!),
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            Text(
+              'Times are shown in your computer’s local timezone (${scheduled?.timeZoneName ?? DateTime.now().timeZoneName}).',
+            ),
+            Wrap(
+              spacing: 8,
+              children: [
+                TextButton.icon(
+                  onPressed: _schedule,
+                  icon: const Icon(Icons.event),
+                  label: Text(
+                    scheduled == null
+                        ? 'Schedule interview'
+                        : 'Change date and time',
+                  ),
+                ),
+                if (scheduled != null)
+                  TextButton(
+                    onPressed: () => setState(() {
+                      scheduled = null;
+                      if (value['status'] == 'scheduled') {
+                        value['status'] = 'planned';
+                      }
+                    }),
+                    child: const Text('Clear schedule'),
+                  ),
+              ],
+            ),
+            _input(fields['duration_minutes']!, 'Duration in minutes'),
+            DropdownButtonFormField<String>(
+              key: ValueKey(value['status']),
+              initialValue: value['status'] as String,
+              decoration: const InputDecoration(labelText: 'Stage status'),
+              items: [
+                for (final v in [
+                  'planned',
+                  'scheduled',
+                  'completed',
+                  'skipped',
+                  'cancelled',
+                ])
+                  DropdownMenuItem(value: v, child: Text(_label(v))),
+              ],
+              onChanged: (v) => setState(() => value['status'] = v),
+            ),
+            const Text(
+              'Scheduled stages complete when their expected duration has elapsed. Choose Planned to keep a stage open without automatic completion.',
+            ),
+            const SizedBox(height: 16),
+
             DropdownButtonFormField<String>(
               initialValue: value['category'] as String,
               decoration: const InputDecoration(labelText: 'Interview role'),
@@ -1083,27 +1270,6 @@ class _StageDialogState extends State<_StageDialog> {
             _input(
               fields['format']!,
               'Format (video, coding, take-home, panel…)',
-            ),
-            _input(fields['duration_minutes']!, 'Duration in minutes'),
-            _input(
-              fields['scheduled_at']!,
-              'Scheduled time (ISO date/time, optional)',
-            ),
-            _input(fields['timezone']!, 'Timezone'),
-            DropdownButtonFormField<String>(
-              initialValue: value['status'] as String,
-              decoration: const InputDecoration(labelText: 'Stage status'),
-              items: [
-                for (final v in [
-                  'planned',
-                  'scheduled',
-                  'completed',
-                  'skipped',
-                  'cancelled',
-                ])
-                  DropdownMenuItem(value: v, child: Text(_label(v))),
-              ],
-              onChanged: (v) => setState(() => value['status'] = v),
             ),
             _input(fields['notes']!, 'Preparation notes', lines: 3),
             SwitchListTile(
@@ -1168,6 +1334,8 @@ class _StageDialogState extends State<_StageDialog> {
                   ? int.parse(e.value.text)
                   : e.value.text;
             }
+            value['scheduled_at'] = scheduled?.toUtc().toIso8601String() ?? '';
+            value['timezone'] = scheduled?.timeZoneName ?? '';
             value['weights'] = {
               for (final e in weights.entries) e.key: num.parse(e.value.text),
             };

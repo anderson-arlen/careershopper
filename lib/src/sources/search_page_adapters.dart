@@ -1,3 +1,4 @@
+import '../domain/listing_terms.dart';
 import 'dart:convert';
 
 import 'package:html/dom.dart';
@@ -215,16 +216,8 @@ class IndeedSearchAdapter implements JobSourceAdapter {
           ).hasMatch('$locationText $description ${attributes.join(' ')}')
           ? 'remote'
           : null,
-      employmentType: attributes
-          .where(
-            (a) => const [
-              'full-time',
-              'part-time',
-              'contract',
-              'internship',
-            ].contains(a.toLowerCase()),
-          )
-          .firstOrNull,
+      employmentType: indeedEmploymentType(record),
+      compensationText: indeedCompensationText(record),
       compensationMinimum: salary['unitOfWork'] == 'YEAR'
           ? (range['min'] as num?)?.round()
           : null,

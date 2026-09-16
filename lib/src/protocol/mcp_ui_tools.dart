@@ -11,6 +11,7 @@ import '../storage/writing_style_repository.dart';
 import '../platform/external_url_launcher.dart';
 import '../storage/ai_harness_repository.dart';
 import '../storage/application_material_repository.dart';
+import '../storage/application_answer_repository.dart';
 import '../storage/configuration_repository.dart';
 import '../storage/database.dart';
 import '../storage/document_template_repository.dart';
@@ -191,6 +192,7 @@ class McpUiTools {
           'changed_since': since?.toUtc().toIso8601String(),
           'time_zone': 'local',
           'counts': statistics.toJson(),
+          'conversion_ratios': statistics.conversionRatiosToJson(),
           'sankey': statistics.sankeyToJson(),
         };
       case 'writing_style_get':
@@ -204,6 +206,24 @@ class McpUiTools {
         );
       case 'application_answer_generate':
         return answerWriter.generate({...args}..remove('confirmed'));
+      case 'application_answers_list':
+        return {
+          'job_id': id('job_id'),
+          'answers': (await ApplicationAnswerRepository(database).list(
+            id('job_id'),
+          )).map(ApplicationAnswerRepository.toJson).toList(),
+        };
+      case 'application_answer_save':
+        return ApplicationAnswerRepository.toJson(
+          await ApplicationAnswerRepository(database).save(
+            jobId: id('job_id'),
+            answerId: id('answer_id'),
+            expectedRevision: args['expected_revision']! as int,
+            question: id('question'),
+            answer: id('answer'),
+            status: id('status'),
+          ),
+        );
       case 'employer_logo_get':
         final job = await jobs.getJob(id('job_id'));
         if (job == null) throw StateError('Unknown job_id.');
@@ -241,6 +261,7 @@ class McpUiTools {
                   'resume_markdown': draft.resume,
                   'cover_letter_markdown': draft.coverLetter,
                   'reviewed': draft.reviewed,
+                  'outdated': draft.outdated,
                   'created_at': draft.createdAt.toIso8601String(),
                 },
           'note':
@@ -253,8 +274,10 @@ class McpUiTools {
               'Documents already exist. Read them and use application_materials_update with the current material ID.',
             );
           }
-          if (await harnesses.watchMaterialStatus(id('job_id')).first ==
-              'running') {
+          if ([
+            'queued',
+            'running',
+          ].contains(await harnesses.watchMaterialStatus(id('job_id')).first)) {
             throw StateError(
               'A generation turn is active. Use its scoped submission workflow.',
             );
@@ -271,8 +294,10 @@ class McpUiTools {
           return {'material_set_id': materialId, 'reviewed': false};
         });
       case 'application_materials_update':
-        if (await harnesses.watchMaterialStatus(id('job_id')).first ==
-            'running') {
+        if ([
+          'queued',
+          'running',
+        ].contains(await harnesses.watchMaterialStatus(id('job_id')).first)) {
           throw StateError(
             'Wait for generation to finish before editing documents.',
           );
@@ -305,6 +330,8 @@ class McpUiTools {
           id('material_set_id'),
           format,
           await renderer(format),
+          forApplication: name == 'application_apply',
+          allowOutdated: args['allow_outdated'] == true,
         );
         if (name == 'application_documents_export') {
           return {
@@ -645,7 +672,7 @@ final uiToolDefinitions = <Map<String, Object?>>[
   ),
   _tool(
     'statistics_get',
-    'Read application funnel counts and Sankey nodes/links for jobs whose last state change is in the selected local-calendar period (default all_time). Counts distinct retained jobs, including hidden, discarded, blocked and closed listings. Counts furthest stage from current status, history and known application date; later stages include earlier ones and hired includes offer. Rejection/withdrawal do not erase progress. The date basis is the last review, application stage/outcome, availability, or employer-block state change, with first-seen as the initial state. Content refreshes and notes do not change that date. Each selected job counts once, not once per event. sankey.source_attribution is first_observed_source: each job enters once through its earliest observation source family, with insertion order breaking timestamp ties; missing sources are unknown. Source nodes feed Jobs found. Nodes are ordered by column, with progression and pending states before unsuccessful terminal outcomes. Accepted offer leads the final column, ahead of Waiting and the other outcomes, while remaining terminal. Links follow the target node order. sankey.nodes contain id, label, count, column, remainder, terminal; sankey.links contain source, target, count. Branches split pre-application jobs into AI rejected (hidden_low_score), user rejected (discarded, employer blocked, or user withdrawn), and Inbox (pre-application jobs eligible for the actionable Inbox under the same shared query). Jobs hidden by search filters appear as Filtered by search; jobs awaiting evaluation or document preparation appear as Pending processing; a recorded employer rejection without application evidence has its own branch. Inbox, Pending processing, and all Waiting nodes have terminal=false; terminal=true is reserved for completed outcomes. remainder marks a branch off the progression path, not a completed outcome. Applied and interviewing split into waiting, employer rejected, or progression. Offers split into employer withdrawn (rejected outcome), user rejected (withdrawn outcome), and waiting. User withdrawals before offers have separate branches when present. Expired outcomes are terminal branches at the retained stage. Accepted offer is always shown and counts jobs whose furthest recorded stage is hired and whose outcome remains active. User decisions take precedence over AI rejection; outcomes are classified at the furthest recorded stage. Required branches retain zero counts; optional branches appear only with nonzero counts.',
+    'Read application funnel counts, conversion ratios and Sankey nodes/links for jobs whose last state change is in the selected local-calendar period (default all_time). Counts distinct retained jobs, including hidden, discarded, blocked and closed listings. Counts furthest stage from current status, history and known application date; later stages include earlier ones and hired includes offer. Rejection/withdrawal do not erase progress. The date basis is the last review, application stage/outcome, availability, or employer-block state change, with first-seen as the initial state. Content refreshes and notes do not change that date. Each selected job counts once, not once per event. conversion_ratios contains jobs_found_per_application (found / applied) and applications_per_interview (applied / interviewed), as unrounded numbers or null when the respective denominator is zero. These count distinct jobs reaching interviews, not interview rounds or mock sessions. sankey.source_attribution is first_observed_source: each job enters once through its earliest observation source family, with insertion order breaking timestamp ties; missing sources are unknown. Source nodes feed Jobs found. Nodes are ordered by column, with progression and pending states before unsuccessful terminal outcomes. Accepted offer leads the final column, ahead of Waiting and the other outcomes, while remaining terminal. Links follow the target node order. sankey.nodes contain id, label, count, column, remainder, terminal; sankey.links contain source, target, count. Branches split pre-application jobs into AI rejected (hidden_low_score), user rejected (discarded, employer blocked, or user withdrawn), and Inbox (pre-application jobs eligible for the actionable Inbox under the same shared query). Jobs hidden by search filters appear as Filtered by search; jobs awaiting evaluation or document preparation appear as Pending processing; a recorded employer rejection without application evidence has its own branch. Inbox, Pending processing, and all Waiting nodes have terminal=false; terminal=true is reserved for completed outcomes. remainder marks a branch off the progression path, not a completed outcome. Applied and interviewing split into waiting, employer rejected, or progression. Offers split into employer withdrawn (rejected outcome), user rejected (withdrawn outcome), and waiting. User withdrawals before offers have separate branches when present. Expired outcomes are terminal branches at the retained stage. Accepted offer is always shown and counts jobs whose furthest recorded stage is hired and whose outcome remains active. User decisions take precedence over AI rejection; outcomes are classified at the furthest recorded stage. Required branches retain zero counts; optional branches appear only with nonzero counts.',
     {
       'period': {
         'type': 'string',
@@ -680,7 +707,7 @@ final uiToolDefinitions = <Map<String, Object?>>[
   ),
   _tool(
     'application_answer_generate',
-    'Generate one job-application essay answer with CareerShopper\'s configured ACP model/settings, shared writing style, and confirmed profile. Requires a user request to draft/revise an application answer. Returns an answer or structured error, including missing_information. Saves no answer history. No form interaction or submission. No job ID or model overrides. Cannot be called by ACP work-order agents or the answer writer. Supply posting_text when the question needs role details; a URL alone is only context.',
+    'Generate one focused job-application answer with CareerShopper\'s configured ACP model/settings, shared writing style, and confirmed profile. Simple motivation questions default to one short paragraph, not a cover letter; limits are ceilings, not targets. Requires a user request to draft/revise an application answer. Returns an answer or structured error, including missing_information. Does not save; use application_answer_save to keep a user-selected draft or exact submitted answer with its job. No form interaction or submission. No job ID or model overrides. Cannot be called by ACP work-order agents or the answer writer. Supply posting_text when the question needs role details; a URL alone is only context.',
     {
       'question': {..._string, 'maxLength': 12000},
       'posting_text': {..._string, 'maxLength': 60000},
@@ -692,6 +719,36 @@ final uiToolDefinitions = <Map<String, Object?>>[
     },
     ['question'],
     external: true,
+  ),
+  _tool(
+    'application_answers_list',
+    'Read saved questions and exact answer text for a job, including draft/submitted status, revision and saved timestamps. These are application records, not confirmed career facts. Equivalent to the Application answers section on the job page.',
+    _job,
+    ['job_id'],
+    read: true,
+  ),
+  _tool(
+    'application_answer_save',
+    'Save a question and exact answer text locally for a job when the user asks to keep application answers. Use a new stable answer_id and expected_revision:0 to create; read application_answers_list and reuse its answer_id/revision to edit. Preserve the user-selected wording without rewriting it. status=submitted only when the user confirms this exact answer was submitted; otherwise draft. Does not submit an application, change job status, promote career facts, or run an AI agent.',
+    {
+      ..._job,
+      'answer_id': {..._string, 'maxLength': 200},
+      'expected_revision': {'type': 'integer', 'minimum': 0},
+      'question': {..._string, 'maxLength': 12000},
+      'answer': {..._string, 'maxLength': 30000},
+      'status': {
+        'type': 'string',
+        'enum': ['draft', 'submitted'],
+      },
+    },
+    [
+      'job_id',
+      'answer_id',
+      'expected_revision',
+      'question',
+      'answer',
+      'status',
+    ],
   ),
   _tool(
     'application_materials_create',
@@ -715,7 +772,7 @@ final uiToolDefinitions = <Map<String, Object?>>[
   ),
   _tool(
     'application_materials_get',
-    'Read the complete active saved resume/cover-letter Markdown, material ID, review state and generation status for a job. Equivalent to document tabs and Copy Markdown; excludes unsaved desktop edits and staged candidates.',
+    'Read the complete active saved resume/cover-letter Markdown, material ID, review state, generation status and outdated flag for a job. outdated means the profile changed after these saved documents; only unapplied jobs are flagged. Equivalent to document tabs and Copy Markdown; excludes unsaved desktop edits and staged candidates.',
     _job,
     ['job_id'],
     read: true,
@@ -739,7 +796,7 @@ final uiToolDefinitions = <Map<String, Object?>>[
   ),
   _tool(
     'application_documents_export',
-    'Export the latest saved Markdown as resume.docx/pdf and cover letter.docx/pdf into ~/Documents/CareerShopper, replacing ALL its contents. Does not open the listing, submit an application, change status, or mark documents reviewed. Review is optional. Requires explicit user approval and replace_output=true. Uses the same rendering and validation as Apply; PDF uses bundled DejaVu Sans.',
+    'Export the latest saved Markdown as resume.docx/pdf and cover letter.docx/pdf into ~/Documents/CareerShopper, replacing ALL its contents. Does not open the listing, submit an application, change status, or mark documents reviewed. Review is optional. Requires explicit user approval and replace_output=true. Existing documents retain their original confirmed source revisions even after profile edits; regeneration is optional. Uses the same rendering and validation as Apply; PDF uses bundled DejaVu Sans.',
     {
       ..._job,
       'material_set_id': _string,
@@ -754,7 +811,7 @@ final uiToolDefinitions = <Map<String, Object?>>[
   ),
   _tool(
     'application_apply',
-    'UI Apply equivalent: export the latest saved Markdown as resume.docx/pdf and cover letter.docx/pdf into ~/Documents/CareerShopper, replacing ALL its contents, then open the saved listing in the user browser. Document review is optional. Requires explicit user approval and replace_output=true. After successful opening, ask whether the user completed the application. Only after yes, call application_status_set with applied; after no, ask whether to discard and call job_review_set with discarded only if confirmed, without marking applied. This tool never submits a form or changes status itself. PDF uses bundled DejaVu Sans.',
+    'UI Apply equivalent: export the latest saved Markdown as resume.docx/pdf and cover letter.docx/pdf into ~/Documents/CareerShopper, replacing ALL its contents, then open the saved listing in the user browser. Document review is optional. If application_materials_get reports outdated, explain that the profile changed and offer to use the saved documents or regenerate. Set allow_outdated=true only when the user chooses to apply with those documents; otherwise this tool stops before export or browser opening. Requires explicit user approval and replace_output=true. After successful opening, ask whether the user completed the application. Only after yes, call application_status_set with applied; after no, ask whether to discard and call job_review_set with discarded only if confirmed, without marking applied. This tool never submits a form or changes status itself. PDF uses bundled DejaVu Sans.',
     {
       ..._job,
       'material_set_id': _string,
@@ -763,6 +820,11 @@ final uiToolDefinitions = <Map<String, Object?>>[
         'enum': ['docx', 'pdf'],
       },
       'replace_output': _bool,
+      'allow_outdated': {
+        ..._bool,
+        'description':
+            'True only after the user confirms applying with these saved documents despite profile changes.',
+      },
     },
     ['job_id', 'material_set_id', 'format', 'replace_output'],
     external: true,

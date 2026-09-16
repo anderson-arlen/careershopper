@@ -8,6 +8,49 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test(
+    'conversion ratios use their respective application and interview counts',
+    () {
+      const stats = JobStatistics(
+        found: 120,
+        applied: 30,
+        interviewed: 12,
+        offers: 3,
+      );
+      expect(stats.jobsFoundPerApplication, 4);
+      expect(stats.applicationsPerInterview, 2.5);
+      const noApplications = JobStatistics(
+        found: 100,
+        applied: 0,
+        interviewed: 0,
+        offers: 0,
+      );
+      expect(noApplications.jobsFoundPerApplication, isNull);
+      const uneven = JobStatistics(
+        found: 10,
+        applied: 5,
+        interviewed: 3,
+        offers: 0,
+      );
+      expect(uneven.conversionRatiosToJson(), {
+        'jobs_found_per_application': 2.0,
+        'applications_per_interview': 5 / 3,
+      });
+      for (final found in [0, 100]) {
+        final noInterviews = JobStatistics(
+          found: found,
+          applied: found,
+          interviewed: 0,
+          offers: 0,
+        );
+        expect(noInterviews.conversionRatiosToJson(), {
+          'jobs_found_per_application': found == 0 ? null : 1.0,
+          'applications_per_interview': null,
+        });
+      }
+    },
+  );
+
   test('Sankey flows conserve jobs, including zero and uneven stages', () {
     for (final stats in [
       const JobStatistics(found: 0, applied: 0, interviewed: 0, offers: 0),

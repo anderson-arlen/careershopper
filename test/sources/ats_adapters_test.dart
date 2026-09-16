@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:careershopper/src/sources/ats_adapters.dart';
 import 'package:careershopper/src/sources/job_source_adapter.dart';
@@ -8,6 +9,28 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  test('Retry-After accepts the standard HTTP date format', () async {
+    final deadline = DateTime.now().toUtc().add(const Duration(minutes: 5));
+    final client = MockClient(
+      (_) async => http.Response(
+        '',
+        429,
+        headers: {'retry-after': HttpDate.format(deadline)},
+      ),
+    );
+    addTearDown(client.close);
+    await expectLater(
+      fetchText(client, Uri.parse('https://example.test/job')),
+      throwsA(
+        isA<SourceBackoffException>().having(
+          (error) => error.retryAfter!.inSeconds,
+          'retry delay',
+          inInclusiveRange(295, 300),
+        ),
+      ),
+    );
+  });
+
   test(
     'Greenhouse fetches public board JSON and normalizes provenance',
     () async {

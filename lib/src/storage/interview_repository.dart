@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../domain/interview.dart';
 import 'database.dart';
+import 'application_answer_repository.dart';
 import 'employer_logo_repository.dart';
 import 'profile_repository.dart';
 import 'resume_content_repository.dart';
@@ -17,6 +18,70 @@ class InterviewRepository {
   final EmployerLogoRepository logos;
   final CareerShopperDatabase database;
   static const _uuid = Uuid();
+
+  /// Scheduled completion reflects elapsed time, not an attendance or hiring outcome.
+  Future<int> completeScheduledStages({String? jobId, DateTime? now}) =>
+      database.transaction(() async {
+        final time = (now ?? DateTime.now()).toUtc();
+        final candidates = await database
+            .customSelect(
+              r'''SELECT w.job_id FROM interview_workspaces w
+      WHERE (? IS NULL OR w.job_id = ?) AND EXISTS (
+        SELECT 1 FROM json_each(w.ladder_json) s
+        WHERE json_extract(s.value, '$.status') = 'scheduled'
+          AND COALESCE(json_extract(s.value, '$.archived'), 0) = 0
+      )''',
+              variables: [Variable<String>(jobId), Variable<String>(jobId)],
+              readsFrom: {database.interviewWorkspaces},
+            )
+            .get();
+        var count = 0;
+        for (final candidate in candidates) {
+          final id = candidate.read<String>('job_id');
+          final row = (await _row(id))!;
+          final stages = interviewMaps(jsonDecode(row.ladderJson));
+          final completed = <String>[];
+          for (final stage in stages) {
+            final end = interviewStageEnd(stage);
+            if (stage['archived'] != true &&
+                stage['status'] == 'scheduled' &&
+                end != null &&
+                !end.isAfter(time)) {
+              stage['status'] = 'completed';
+              completed.add(stage['id']! as String);
+            }
+          }
+          if (completed.isEmpty) continue;
+          await _update(
+            id,
+            InterviewWorkspacesCompanion(
+              ladderJson: Value(interviewCanonical(stages)),
+              revision: Value(row.revision + 1),
+              updatedAt: Value(time),
+            ),
+          );
+          await database
+              .into(database.auditEvents)
+              .insert(
+                AuditEventsCompanion.insert(
+                  id: _uuid.v7(),
+                  eventType: 'interview.scheduled_stages_completed',
+                  subjectType: 'job',
+                  subjectId: id,
+                  actor: 'system',
+                  payloadJson: Value(
+                    jsonEncode({
+                      'stage_ids': completed,
+                      'reason': 'scheduled_end_elapsed',
+                    }),
+                  ),
+                  occurredAt: time,
+                ),
+              );
+          count += completed.length;
+        }
+        return count;
+      });
 
   Future<InterviewWorkspace?> _row(String jobId) => (database.select(
     database.interviewWorkspaces,
@@ -184,6 +249,7 @@ class InterviewRepository {
   }
 
   Future<Map<String, Object?>> summary(String jobId) async {
+    await completeScheduledStages(jobId: jobId);
     final rows = await database
         .customSelect(
           """
@@ -207,6 +273,7 @@ class InterviewRepository {
   }
 
   Future<Map<String, Object?>> get(String jobId) async {
+    await completeScheduledStages(jobId: jobId);
     final job = await (database.select(
       database.jobs,
     )..where((r) => r.id.equals(jobId))).getSingleOrNull();
@@ -247,6 +314,9 @@ class InterviewRepository {
       'job_id': jobId,
       'revision': row?.revision ?? 0,
       'ladder': jsonDecode(row?.ladderJson ?? '[]'),
+      'next_scheduled_stage': nextScheduledInterviewStage(
+        interviewMaps(jsonDecode(row?.ladderJson ?? '[]')),
+      ),
       'current_stage': currentInterviewStage(
         interviewMaps(jsonDecode(row?.ladderJson ?? '[]')),
       ),
@@ -279,17 +349,36 @@ class InterviewRepository {
     String jobId,
     String? selectedId,
   ) async {
-    if (selectedId != null) return revision(jobId, selectedId);
+    final submittedAnswers =
+        (await ApplicationAnswerRepository(database).list(jobId))
+            .where((r) => r.status == 'submitted')
+            .map(ApplicationAnswerRepository.toJson)
+            .toList();
+    if (selectedId != null) {
+      final selected = await revision(jobId, selectedId);
+      if (selected != null) {
+        return {
+          ...selected,
+          'payload': {
+            ...interviewMap(selected['payload']),
+            'application_answers': submittedAnswers,
+          },
+        };
+      }
+    }
     final latest = (await materials(jobId)).firstOrNull;
-    if (latest == null) return null;
+    if (latest == null && submittedAnswers.isEmpty) return null;
     return {
       'id': null,
       'kind': 'context',
-      'created_at': latest['created_at'],
+      'created_at': latest?['created_at'],
       'payload': {
-        ...latest,
-        'material_set_id': latest['id'],
-        'attribution': 'latest_application_documents',
+        ...?latest,
+        'material_set_id': latest?['id'],
+        'attribution': latest == null
+            ? 'submitted_application_answers'
+            : 'latest_application_documents',
+        'application_answers': submittedAnswers,
       },
     };
   }
@@ -333,7 +422,14 @@ class InterviewRepository {
   ) => database.transaction(() async {
     validateInterviewLadder(stages);
     final row = await _edit(jobId, expected);
-    final retained = [...stages];
+    final retained = [
+      for (final stage in stages)
+        {
+          ...stage,
+          'scheduled_at':
+              interviewStageStart(stage)?.toUtc().toIso8601String() ?? '',
+        },
+    ];
     final ids = stages.map((s) => s['id']).toSet();
     // Removal archives an identity; historical questions and sessions still resolve it.
     for (final old in interviewMaps(jsonDecode(row.ladderJson))) {
@@ -789,6 +885,7 @@ class InterviewRepository {
       return practice(existing.id);
     }
     await ensure(jobId);
+    await completeScheduledStages(jobId: jobId);
     final row = (await _row(jobId))!;
     final ladder = interviewMaps(jsonDecode(row.ladderJson));
     final stage = stageId == null

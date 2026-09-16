@@ -94,6 +94,76 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('stage flow opens date/time and status controls', (tester) async {
+    await tester.runAsync(
+      () => repo.saveStages(job, 0, [
+        {
+          ...newInterviewStage('screen', 'Recruiter screen'),
+          'status': 'completed',
+        },
+        {
+          ...newInterviewStage('technical', 'Technical interview'),
+          'status': 'scheduled',
+          'scheduled_at': DateTime(2099, 4, 1, 10).toUtc().toIso8601String(),
+        },
+        newInterviewStage('manager', 'Hiring manager'),
+      ]),
+    );
+    await show(tester);
+    expect(find.text('Interview stages'), findsOneWidget);
+    expect(find.byIcon(Icons.arrow_forward), findsNWidgets(2));
+    expect(find.text('Completed'), findsOneWidget);
+    expect(find.text('Scheduled'), findsOneWidget);
+    expect(find.text('Not scheduled'), findsOneWidget);
+    expect(find.text('Date not recorded'), findsOneWidget);
+    if (const bool.fromEnvironment('CAREERSHOPPER_CAPTURE_INTERVIEW_UI')) {
+      final boundary = tester.renderObject<RenderRepaintBoundary>(
+        find.byKey(const ValueKey('capture')),
+      );
+      await tester.runAsync(() async {
+        final image = await boundary.toImage();
+        final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+        await File(
+          '/tmp/careershopper-interview-schedule.png',
+        ).writeAsBytes(bytes!.buffer.asUint8List());
+        image.dispose();
+      });
+    }
+    await tester.tap(find.byKey(const ValueKey('interview-stage-technical')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Change date and time'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('2').last);
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TimePickerDialog), findsOneWidget);
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save stage'));
+    await tester.pumpAndSettle();
+    var saved = await tester.runAsync(() => repo.get(job));
+    var technical = interviewMaps(saved!['ladder'])[1];
+    expect(interviewStageStart(technical)!.toLocal(), DateTime(2099, 4, 2, 10));
+    expect(technical['status'], 'scheduled');
+    await tester.tap(find.byKey(const ValueKey('interview-stage-technical')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.widgetWithText(DropdownButtonFormField<String>, 'Stage status'),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Completed').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save stage'));
+    await tester.pumpAndSettle();
+    saved = await tester.runAsync(() => repo.get(job));
+    technical = interviewMaps(saved!['ladder'])[1];
+    expect(technical['status'], 'completed');
+    expect(interviewMap(saved['current_stage'])['id'], 'manager');
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('overview guides voice practice without creating a session', (
     tester,
   ) async {
@@ -258,6 +328,7 @@ void main() {
           return dispatch.future;
         },
       );
+      await tester.ensureVisible(find.text('Refresh research'));
       await tester.tap(find.text('Refresh research'));
       await tester.pump();
       expect(find.text('Starting research…'), findsOneWidget);

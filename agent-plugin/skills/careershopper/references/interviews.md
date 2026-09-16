@@ -56,7 +56,12 @@ For a relevant stack, questions might test SQL NULL semantics, type safety/narro
 or execution order in concrete asynchronous code. Specify runtime assumptions so
 questions have defensible answers; avoid ambiguous code-order grading.
 
-Use application_context from interview_get automatically. For document follow-ups,
+Use application_context from interview_get automatically. Its payload.application_answers
+contains saved submitted application questions and exact answers. Use them for
+follow-ups on what the applicant wrote, preserving their attribution as submitted
+text rather than treating them as newly confirmed career facts. Draft answers are
+excluded, and an active practice retains the context saved when it began.
+For document follow-ups,
 set application_reference to the actual passage and **refer to it in the question**:
 'Your resume mentions migrating a service. What tradeoffs did you make?'
 Do not turn a known story into a coy generic behavioral prompt. Also include
@@ -129,8 +134,10 @@ If the user supplies a practice ID or explicitly asks to resume an unfinished
 practice, read `interview_practice_context_get` and resume it. Otherwise read
 `interview_get`, then call `interview_practice_start` with `confirmed: true` and a
 stable client_request_id. Omit `stage_id` unless the user asks for a particular
-stage: CareerShopper selects `current_stage`, the first non-archived planned or
-scheduled stage in the saved ladder. Completed, skipped and cancelled stages do
+stage: CareerShopper selects `current_stage`, prioritizing the earliest upcoming
+or ongoing scheduled stage, then the first unfinished stage in ladder order.
+Scheduled stages automatically complete after their start time plus duration;
+this reflects the schedule, not proof of attendance. Completed, skipped and cancelled stages do
 not qualify. If there is no current stage, ask which stage to practice or help
 record the missing ladder; do not silently choose a completed stage. Completing
 mock practice never advances the real interview ladder.
@@ -267,3 +274,16 @@ are practice feedback, not hiring probabilities. Use `interview_statistics_get`
 for comparable completed-session trends; do not combine different stage,
 difficulty, personality, coaching, rubric or known model groups into an
 improvement claim.
+
+## Schedule real interviews
+
+Use `interview_get` and `interview_stages_save` for user-requested schedule or
+status changes, preserving other stages and the expected revision. Supply
+`scheduled_at` as an ISO timestamp with UTC or a numeric offset, the expected
+`duration_minutes`, and `status: scheduled`. The desktop shows local dates/times
+and sorts Interviews by the next appointment, with unscheduled jobs last.
+A past scheduled end completes that stage automatically, including after reopening.
+Choose planned, completed, skipped, or cancelled when the user requests a manual
+status; planned stages remain open without timed completion. Clearing a schedule
+uses an empty scheduled_at and planned status. Do not infer an appointment from
+company research or change the application's hiring outcome.

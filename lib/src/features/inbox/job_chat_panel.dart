@@ -1,3 +1,4 @@
+import '../ai/chat_composer.dart';
 import 'package:flutter/material.dart';
 
 import '../../domain/job.dart';
@@ -255,7 +256,6 @@ class _JobChatPanelState extends State<JobChatPanel> {
                     ChatWorkIndicator(
                       status: current.status,
                       busy: _sending,
-                      onInterrupt: () => _interrupt(current),
                       onRegenerate: current.kind == 'application_materials'
                           ? _regenerate
                           : null,
@@ -275,34 +275,34 @@ class _JobChatPanelState extends State<JobChatPanel> {
                             enabled: !_sending,
                             onChanged: (images) =>
                                 setState(() => _images = images),
-                            child: ChatKeyboardShortcuts(
+                            child: ChatComposer(
                               controller: _message,
                               hasAttachments: _images.isNotEmpty,
-                              onSend: _sending ? null : () => _send(current),
-                              child: TextField(
+                              running: running,
+                              busy: _sending,
+                              onSend: () => _send(current),
+                              onInterrupt: current == null
+                                  ? null
+                                  : () => _interrupt(current),
+                              field: ChatKeyboardShortcuts(
                                 controller: _message,
-                                enabled: !_sending,
-                                minLines: 2,
-                                maxLines: 6,
-                                onChanged: (_) => setState(() {}),
-                                decoration: InputDecoration(
-                                  labelText: 'Message about this job',
-                                  hintText: running
-                                      ? 'Send a message to steer the agent…'
-                                      : 'Is this actually a remote role?',
+                                hasAttachments: _images.isNotEmpty,
+                                onSend: _sending ? null : () => _send(current),
+                                child: TextField(
+                                  controller: _message,
+                                  enabled: !_sending,
+                                  minLines: 2,
+                                  maxLines: 6,
+                                  onChanged: (_) => setState(() {}),
+                                  decoration: InputDecoration(
+                                    labelText: 'Message about this job',
+                                    hintText: running
+                                        ? 'Send a message to steer the agent…'
+                                        : 'Is this actually a remote role?',
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        ),
-                        Tooltip(
-                          message: running
-                              ? 'Steer job message'
-                              : 'Send job message',
-                          child: FilledButton.icon(
-                            onPressed: _sending ? null : () => _send(current),
-                            icon: const Icon(Icons.send),
-                            label: Text(running ? 'Steer' : 'Send'),
                           ),
                         ),
                       ],

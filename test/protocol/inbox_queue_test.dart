@@ -661,6 +661,7 @@ void main() {
         queue.map((job) => job.id),
       );
       expect((inbox['jobs'] as List).first['ready_to_apply'], true);
+      expect((inbox['jobs'] as List).first['can_regenerate_documents'], true);
       final filtered = await search({
         'view': 'inbox',
         'query': 'review',

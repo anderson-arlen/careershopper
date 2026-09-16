@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 class ChatWorkIndicator extends StatelessWidget {
   const ChatWorkIndicator({
     required this.status,
-    required this.onInterrupt,
     this.busy = false,
     this.onRetry,
     this.onRegenerate,
@@ -11,7 +10,6 @@ class ChatWorkIndicator extends StatelessWidget {
   });
 
   final String? status;
-  final VoidCallback onInterrupt;
   final bool busy;
   final VoidCallback? onRetry, onRegenerate;
 
@@ -91,12 +89,6 @@ class ChatWorkIndicator extends StatelessWidget {
                   onPressed: busy ? null : onRegenerate,
                   icon: const Icon(Icons.auto_awesome),
                   label: const Text('Generate from scratch'),
-                ),
-              if (running)
-                OutlinedButton.icon(
-                  onPressed: busy ? null : onInterrupt,
-                  icon: const Icon(Icons.stop),
-                  label: const Text('Interrupt'),
                 ),
             ],
           ),

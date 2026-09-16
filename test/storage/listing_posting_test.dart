@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:careershopper/src/domain/job.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:careershopper/src/storage/database.dart';
 import 'package:careershopper/src/storage/job_repository.dart';
 import 'package:careershopper/src/storage/listing_availability_service.dart';
@@ -64,7 +67,6 @@ void main() {
   for (final (status, body) in [
     (403, 'Forbidden'),
     (999, 'Request denied'),
-    (429, 'Too many requests'),
     (200, '<main>Verify you are human</main>'),
     (200, '<title>Sign In | LinkedIn</title><main>Sign in to continue</main>'),
   ]) {
@@ -96,6 +98,108 @@ void main() {
       },
     );
   }
+
+  test(
+    '429 persists a temporary host-wide deadline across service instances',
+    () async {
+      var now = DateTime.now().toUtc();
+      var requests = 0;
+      ListingAvailabilityService service() => ListingAvailabilityService(
+        db,
+        now: () => now,
+        clientFactory: () => MockClient((_) async {
+          requests++;
+          return requests == 1
+              ? http.Response('', 429, headers: {'retry-after': '120'})
+              : http.Response('<main>Job details</main>', 200);
+        }),
+      );
+      final result = await service().fetchPosting(id);
+      expect(result['blocked'], true);
+      expect(
+        DateTime.parse(result['retry_at'] as String),
+        now.add(const Duration(seconds: 120)),
+      );
+      final other = await jobs.queueManualUrl(
+        Uri.parse('https://www.linkedin.com/jobs/view/456'),
+      );
+      now = now.add(const Duration(seconds: 119));
+      expect((await service().fetchPosting(other))['request_sent'], false);
+      expect(
+        (await service().check(other)).detail,
+        contains('no request sent'),
+      );
+      expect(requests, 1);
+      now = now.add(const Duration(seconds: 1));
+      expect((await service().fetchPosting(other))['text'], 'Job details');
+      expect(requests, 2);
+    },
+  );
+
+  test(
+    'availability 429 shares the posting cooldown and defaults to one hour',
+    () async {
+      var now = DateTime.now().toUtc();
+      var requests = 0;
+      final service = ListingAvailabilityService(
+        db,
+        now: () => now,
+        clientFactory: () => MockClient((_) async {
+          requests++;
+          return http.Response('', 429);
+        }),
+      );
+      await service.check(id);
+      expect(
+        await service.postingRetryAt(id),
+        now.add(const Duration(hours: 1)),
+      );
+      expect((await service.fetchPosting(id))['request_sent'], false);
+      expect(requests, 1);
+      now = now.add(const Duration(hours: 1));
+      expect((await service.fetchPosting(id))['request_sent'], true);
+      expect(requests, 2);
+    },
+  );
+
+  test('legacy 429 expires without clearing an actual access denial', () async {
+    final now = DateTime.now().toUtc();
+    Future<void> event(String eventId, String error) async {
+      await db
+          .into(db.auditEvents)
+          .insert(
+            AuditEventsCompanion.insert(
+              id: eventId,
+              eventType: 'listing.posting_fetched',
+              subjectType: 'job',
+              subjectId: id,
+              actor: 'system',
+              occurredAt: now.subtract(const Duration(hours: 2)),
+              payloadJson: Value(
+                jsonEncode({
+                  'blocked_host': 'www.linkedin.com',
+                  'error': error,
+                }),
+              ),
+            ),
+          );
+    }
+
+    var requests = 0;
+    final service = ListingAvailabilityService(
+      db,
+      clientFactory: () => MockClient((_) async {
+        requests++;
+        return http.Response('<main>Job details</main>', 200);
+      }),
+    );
+    await event('legacy-rate', 'The source requested rate-limit backoff.');
+    expect((await service.fetchPosting(id))['request_sent'], true);
+    await event('denied', 'The source denied access with HTTP 403.');
+    await event('newer-rate', 'The source requested rate-limit backoff.');
+    expect((await service.fetchPosting(id))['request_sent'], false);
+    expect(requests, 1);
+  });
 
   test(
     'Indeed fetch uses saved source and clearing its block preserves apply URL',

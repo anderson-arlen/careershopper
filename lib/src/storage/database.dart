@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
 import 'app_data_directory.dart';
+import '../domain/listing_terms.dart';
 
 part 'database.g.dart';
 part 'interview_tables.dart';
@@ -158,6 +159,7 @@ class JobSnapshots extends Table {
   TextColumn get descriptionHash => text()();
   TextColumn get applicationUrl => text().nullable()();
   TextColumn get compensationJson => text().nullable()();
+  TextColumn get employmentType => text().nullable()();
   DateTimeColumn get capturedAt => dateTime()();
 
   @override
@@ -524,6 +526,22 @@ class AuditEvents extends Table {
   DateTimeColumn get occurredAt => dateTime()();
 }
 
+@TableIndex(name: 'application_answer_job', columns: {#jobId, #createdAt})
+@DataClassName('ApplicationAnswerRow')
+class ApplicationAnswers extends Table {
+  TextColumn get id => text()();
+  TextColumn get jobId => text().references(Jobs, #id)();
+  TextColumn get question => text()();
+  TextColumn get answer => text()();
+  TextColumn get status => text()();
+  IntColumn get revision => integer()();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
 @DriftDatabase(
   tables: [
     SavedSearches,
@@ -556,6 +574,7 @@ class AuditEvents extends Table {
     MaterialClaims,
     Artifacts,
     AuditEvents,
+    ApplicationAnswers,
     InterviewWorkspaces,
     InterviewRevisions,
     InterviewPractices,
@@ -618,7 +637,7 @@ class CareerShopperDatabase extends _$CareerShopperDatabase {
   }
 
   @override
-  int get schemaVersion => 19;
+  int get schemaVersion => 21;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -632,6 +651,12 @@ class CareerShopperDatabase extends _$CareerShopperDatabase {
       );
     },
     onUpgrade: (migrator, from, to) async {
+      if (from < 21) {
+        await migrator.createTable(applicationAnswers);
+        await customStatement(
+          'CREATE INDEX IF NOT EXISTS application_answer_job ON application_answers(job_id, created_at)',
+        );
+      }
       if (from < 15) {
         final jobColumns = await customSelect(
           "PRAGMA table_info('jobs')",
@@ -956,6 +981,79 @@ class CareerShopperDatabase extends _$CareerShopperDatabase {
         );
       }
       if (from < 19) await _createReadIndexes();
+      if (from < 20) {
+        final columns = await customSelect(
+          'PRAGMA table_info(job_snapshots)',
+        ).get();
+        if (!columns.any(
+          (row) => row.read<String>('name') == 'employment_type',
+        )) {
+          await migrator.addColumn(jobSnapshots, jobSnapshots.employmentType);
+        }
+        // Recover terms already present in retained source responses, without fetching.
+        for (final snapshot in await select(jobSnapshots).get()) {
+          final observation =
+              await (select(jobObservations)
+                    ..where(
+                      (r) =>
+                          r.jobId.equals(snapshot.jobId) &
+                          r.observedAt.isSmallerOrEqualValue(
+                            snapshot.capturedAt,
+                          ) &
+                          r.rawPayloadJson.isNotNull() &
+                          r.adapterId.isIn([
+                            'indeed_public_search_v1',
+                            'lever_postings_v1',
+                            'ashby_job_board_v1',
+                          ]),
+                    )
+                    ..orderBy([
+                      (r) => OrderingTerm.desc(r.observedAt),
+                      (r) => OrderingTerm.desc(r.id),
+                    ])
+                    ..limit(1))
+                  .getSingleOrNull();
+          if (observation == null) continue;
+          Map<String, dynamic> raw;
+          try {
+            final decoded = jsonDecode(observation.rawPayloadJson!);
+            if (decoded is! Map<String, dynamic>) continue;
+            raw = decoded;
+          } on FormatException {
+            continue;
+          }
+          final employment = switch (observation.sourceFamily) {
+            'indeed' => indeedEmploymentType(raw),
+            'lever' =>
+              raw['categories'] is Map &&
+                      raw['categories']['commitment'] is String
+                  ? raw['categories']['commitment'] as String
+                  : null,
+            'ashby' =>
+              raw['employmentType'] is String
+                  ? raw['employmentType'] as String
+                  : null,
+            _ => null,
+          };
+          final compensation = snapshot.compensationJson == null
+              ? <String, dynamic>{}
+              : jsonDecode(snapshot.compensationJson!) as Map<String, dynamic>;
+          if (observation.sourceFamily == 'indeed') {
+            final text = indeedCompensationText(raw);
+            if (text != null) compensation.putIfAbsent('text', () => text);
+          }
+          await (update(
+            jobSnapshots,
+          )..where((r) => r.id.equals(snapshot.id))).write(
+            JobSnapshotsCompanion(
+              employmentType: Value(snapshot.employmentType ?? employment),
+              compensationJson: Value(
+                compensation.isEmpty ? null : jsonEncode(compensation),
+              ),
+            ),
+          );
+        }
+      }
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');

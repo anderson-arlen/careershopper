@@ -158,7 +158,27 @@ void main() {
     expect(listing.remoteStatus, 'remote');
     expect(listing.employmentType, 'Full-time');
     expect(listing.compensationMinimum, 120000);
+    expect(listing.compensationText, contains('120,000'));
+    expect(listing.compensationText, contains('per year'));
     expect(listing.applicationUrl.toString(), 'https://example.test/apply/one');
+    final hourly = adapter.normalize({
+      ...pages.first.records.single,
+      'attributes': [
+        {'label': 'Part-time'},
+        {'label': 'Contract'},
+      ],
+      'compensation': {
+        'currencyCode': 'USD',
+        'baseSalary': {
+          'unitOfWork': 'HOUR',
+          'range': {'min': 55.5, 'max': 75},
+        },
+      },
+    });
+    expect(hourly.compensationText, 'USD 55.5 – 75 · per hour');
+    expect(hourly.compensationMinimum, isNull);
+    expect(hourly.compensationMaximum, isNull);
+    expect(hourly.employmentType, 'Part-time · Contract');
   });
 
   for (final response in [

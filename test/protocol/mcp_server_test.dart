@@ -23,6 +23,49 @@ void main() {
   tearDown(() => database.close());
 
   test(
+    'MCP imports and returns the same listing terms as the job profile',
+    () async {
+      final id = await JobRepository(
+        database,
+      ).queueManualUrl(Uri.parse('https://example.test/terms'));
+      final responses = await _exchange(database, [
+        {
+          'jsonrpc': '2.0',
+          'id': 1,
+          'method': 'tools/call',
+          'params': {
+            'name': 'job_import_submit',
+            'arguments': {
+              'job_id': id,
+              'source_url': 'https://example.test/terms',
+              'title': 'Engineer',
+              'employer_name': 'Example',
+              'description': 'Build APIs.',
+              'employment_type': 'Part-time',
+              'compensation_text': 'EUR 50–75 per hour',
+            },
+          },
+        },
+        {
+          'jsonrpc': '2.0',
+          'id': 2,
+          'method': 'tools/call',
+          'params': {
+            'name': 'job_get',
+            'arguments': {'job_id': id},
+          },
+        },
+      ]);
+      expect((responses.first['result'] as Map)['isError'], false);
+      final job =
+          ((responses.last['result'] as Map)['structuredContent'] as Map)['job']
+              as Map;
+      expect(job['employment_type'], 'Part-time');
+      expect(job['compensation_text'], 'EUR 50–75 per hour');
+    },
+  );
+
+  test(
     'MCP configures LinkedIn page limits and preserves them on edits',
     () async {
       Map<String, Object?> upsert(Map<String, Object?> arguments) => {
@@ -584,6 +627,7 @@ void main() {
                 'job_id': jobId,
                 'personal_fit_score': 80,
                 'attainability_score': 75,
+                'unmet_requirements': <Object?>[],
                 'confidence': 0.35,
                 'summary':
                     'Matches the stated work; the complete posting is brief.',

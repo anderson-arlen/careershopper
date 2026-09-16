@@ -7,6 +7,7 @@ import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 
 import '../domain/job.dart';
+import '../domain/job_eligibility.dart';
 import '../ingestion/normalization.dart';
 import '../storage/configuration_repository.dart';
 import '../storage/database.dart';
@@ -475,6 +476,9 @@ class McpServer {
     'has_employer_logo': job.employerLogoPng != null,
     'employer_logo_source_url': job.employerLogoSourceUrl,
     'location': job.location,
+    'compensation_text': job.compensationText,
+    'employment_type': job.employmentType,
+    'next_interview': job.nextInterviewStage,
     'description': job.description,
     'application_url': job.applicationUrl?.toString(),
     'availability': job.availability.persistedName,
@@ -482,12 +486,15 @@ class McpServer {
     'application_status': job.applicationStatus.persistedName,
     'application_outcome': job.applicationOutcome.persistedName,
     'ready_to_apply': job.readyToApply,
+    'documents_outdated': job.documentsOutdated,
+    'can_regenerate_documents': job.canRegenerateDocuments,
     'ai_error': job.aiError,
     'observed_at': job.observedAt.toIso8601String(),
     'overall_score': job.overallScore,
     'personal_fit_score': job.personalFitScore,
     'attainability_score': job.attainabilityScore,
     'evaluation_summary': job.evaluationSummary,
+    'unmet_requirements': job.unmetRequirements,
   };
 
   Future<Map<String, Object?>> _profileGet() async {
@@ -819,6 +826,8 @@ class McpServer {
       employerName: employerName,
       normalizedEmployerName: normalizeEmployerName(employerName),
       location: (arguments['location'] as String?) ?? '',
+      employmentType: arguments['employment_type'] as String?,
+      compensationText: arguments['compensation_text'] as String?,
       description: description,
       contentHash: contentHash(description),
       sourceUrl: canonicalizeJobUrl(sourceUrl),
@@ -886,6 +895,25 @@ class McpServer {
       max: 100,
     );
     final overall = (personalFit * 0.60 + attainability * 0.40).round();
+    final snapshot = await (database.select(
+      database.jobSnapshots,
+    )..where((r) => r.id.equals(job.currentSnapshotId!))).getSingle();
+    final facts = await ResumeContentRepository(
+      _profile,
+    ).evidence(forMatching: true);
+    final List<Map<String, Object?>> unmet;
+    try {
+      unmet = validateUnmetJobRequirements(
+        arguments['unmet_requirements'],
+        posting: '${snapshot.title}\n${snapshot.description}',
+        factRevisionIds: facts
+            .where((f) => f.verificationStatus == 'confirmed')
+            .map((f) => f.revisionId)
+            .toSet(),
+      );
+    } on FormatException catch (error) {
+      throw _RpcError(-32602, error.message);
+    }
     final confidence = arguments['confidence'];
     if (confidence is! num || confidence < 0 || confidence > 1) {
       throw const _RpcError(
@@ -896,7 +924,9 @@ class McpServer {
     final profileSnapshotId = await _currentProfileSnapshot();
     final evaluationId = _uuid.v7();
     final threshold = await _effectiveThreshold(jobId);
-    var reviewState = overall >= threshold ? 'inbox' : 'hidden_low_score';
+    var reviewState = unmet.isEmpty && overall >= threshold
+        ? 'inbox'
+        : 'hidden_low_score';
     await database.transaction(() async {
       final current = await (database.select(
         database.jobs,
@@ -916,7 +946,10 @@ class McpServer {
               attainabilityScore: attainability,
               overallScore: overall,
               confidence: confidence.toDouble(),
-              dimensionsJson: jsonEncode(arguments['dimensions'] ?? {}),
+              dimensionsJson: jsonEncode({
+                ..._objectMap(arguments['dimensions'], allowNull: true),
+                'unmet_requirements': unmet,
+              }),
               strengthsJson: jsonEncode(arguments['strengths'] ?? []),
               concernsJson: jsonEncode(arguments['concerns'] ?? []),
               unknownsJson: jsonEncode(arguments['unknowns'] ?? []),
@@ -944,6 +977,7 @@ class McpServer {
       'overall_score': overall,
       'threshold': threshold,
       'review_state': reviewState,
+      'unmet_requirements': unmet,
     };
   });
 
@@ -1444,11 +1478,19 @@ class McpServer {
       throw const _RpcError(-32602, 'Subject is outside this ACP work order.');
     }
     final scope = jsonDecode(order.scopeJson) as Map;
-    if (scope['search_queue'] == true &&
-        (scope['active_job_id'] != subjectId || order.status != 'running')) {
+    if (scope['search_queue'] == true && order.status != 'running') {
       throw const _RpcError(
         -32602,
         'Only the current running search assignment may be changed.',
+      );
+    }
+    if (scope['search_queue'] == true && scope['active_job_id'] != subjectId) {
+      throw _RpcError(
+        -32602,
+        'Wrong job_id: received $subjectId. The current assignment is '
+        '${scope['active_job_id']}. Read that job and submit an evaluation '
+        'for that ID; do not reuse a previous listing’s ID. '
+        'The search session is running and does not need to be restarted.',
       );
     }
     final item =
@@ -1714,7 +1756,7 @@ final _toolDefinitions = <Map<String, Object?>>[
   {
     'name': 'jobs_search',
     'description':
-        'Search locally retained jobs with database offset/limit pagination and next_offset. view=interviewing matches the Interviews navigation: active applications at Interviewing. Optional application_status, application_outcome, review_state and availability filters intersect the chosen view and text search, matching the desktop Filters dialog. Each result includes source_family from the earliest recorded observation, matching the original-source icon in the job list. view=all (default) includes hidden and historical jobs, newest first. view=inbox matches the UI to-do queue: jobs awaiting review, ready to apply, or needing an AI retry (ai_error explains the failure). Blocked employers and ended applications are excluded. total_count includes all matches before limit; for view=inbox without a query it is the navigation inbox count. Without a query, Inbox puts AI failures first, then orders each group by overall fit score descending (unscored last), newest and job ID. A query ranks by word-match search_score first and uses the view order for ties.',
+        'Search locally retained jobs with database offset/limit pagination and next_offset. documents_outdated flags unapplied jobs whose saved documents predate profile changes; it is informational and does not require regeneration. can_regenerate_documents identifies approved, active, unapplied jobs with saved documents and no queued/running generation, excluding closed listings and blocked employers. For user-requested bulk updates, draft and save each selected pair through application_materials_get/update using current confirmed Resume content; MCP does not launch ACP writers. next_interview contains the next scheduled stage, including its UTC scheduled_at and duration_minutes, or null. Interviews sort by earliest scheduled time first, with unscheduled jobs last, before text relevance. view=interviewing matches the Interviews navigation: active applications at Interviewing. Optional application_status, application_outcome, review_state and availability filters intersect the chosen view and text search, matching the desktop Filters dialog. Each result includes compensation_text and employment_type from the saved listing (null when unavailable), and source_family from the earliest recorded observation, matching the original-source icon in the job list. view=all (default) includes hidden and historical jobs, newest first. view=inbox matches the UI to-do queue: jobs awaiting review, ready to apply, or needing an AI retry (ai_error explains the failure). Blocked employers and ended applications are excluded. total_count includes all matches before limit; for view=inbox without a query it is the navigation inbox count. Without a query, Inbox puts AI failures first, then orders each group by overall fit score descending (unscored last), newest and job ID. A query ranks by word-match search_score first and uses the view order for ties.',
     'inputSchema': {
       'type': 'object',
       'properties': {
@@ -1951,7 +1993,7 @@ final _toolDefinitions = <Map<String, Object?>>[
   {
     'name': 'job_posting_fetch',
     'description':
-        'Fetch a saved job source URL locally using CareerShopper HTTP with a Chrome-style User-Agent. Use for a user-requested import/refresh or an incomplete saved search description before web/browser tools. Returns untrusted page text and source_url for extraction with job_import_submit; does not save a description or evaluate. No JavaScript or login cookies. Requires confirmed:true and honors work-order scope and saved provider blocks. $jobPostingContentInstructions',
+        'Fetch a saved job source URL locally using CareerShopper HTTP with a Chrome-style User-Agent. Use for a user-requested import/refresh or an incomplete saved search description before web/browser tools. Returns untrusted page text and source_url for extraction with job_import_submit; does not save a description or evaluate. No JavaScript or login cookies. Requires confirmed:true and honors work-order scope and saved provider blocks. A temporary HTTP 429 cooldown returns blocked:true with retry_at (UTC); stop retrieval and end this turn. The desktop search queue resumes after that deadline. Do not switch tools or retry during cooldown. Permanent access blocks have no retry_at. $jobPostingContentInstructions',
     'inputSchema': {
       'type': 'object',
       'properties': {
@@ -1985,6 +2027,16 @@ final _toolDefinitions = <Map<String, Object?>>[
         'title': {'type': 'string'},
         'employer_name': {'type': 'string'},
         'location': {'type': 'string'},
+        'employment_type': {
+          'type': 'string',
+          'description':
+              'Employment types explicitly stated by the listing, such as Full-time, Part-time or Contract. Omit when unknown.',
+        },
+        'compensation_text': {
+          'type': 'string',
+          'description':
+              'The listing’s stated compensation, including currency, range and pay period where given. Preserve qualifications such as base vs total pay. Do not estimate or assume an annual period; omit when unknown.',
+        },
         'description': {
           'type': 'string',
           'description':
@@ -2014,6 +2066,7 @@ final _toolDefinitions = <Map<String, Object?>>[
           'minimum': 0,
           'maximum': 100,
         },
+        'unmet_requirements': unmetJobRequirementsSchema,
         'confidence': {
           'type': 'number',
           'minimum': 0,
@@ -2045,6 +2098,7 @@ final _toolDefinitions = <Map<String, Object?>>[
         'job_id',
         'personal_fit_score',
         'attainability_score',
+        'unmet_requirements',
         'confidence',
         'summary',
         'strengths',

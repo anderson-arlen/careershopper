@@ -1,3 +1,4 @@
+import 'chat_composer.dart';
 import 'chat_transcript.dart';
 import 'chat_attachment_input.dart';
 import '../../domain/chat_image.dart';
@@ -382,7 +383,6 @@ class _ConversationViewState extends State<_ConversationView> {
         ChatWorkIndicator(
           status: widget.conversation.status,
           busy: _sending,
-          onInterrupt: _interrupt,
           onRegenerate:
               widget.conversation.kind == 'application_materials' &&
                   widget.conversation.jobId != null
@@ -415,34 +415,34 @@ class _ConversationViewState extends State<_ConversationView> {
                   images: _images,
                   enabled: !_sending,
                   onChanged: (images) => setState(() => _images = images),
-                  child: ChatKeyboardShortcuts(
+                  child: ChatComposer(
                     controller: _controller,
                     hasAttachments: _images.isNotEmpty,
-                    onSend: _sending ? null : _send,
-                    child: TextField(
+                    running: running,
+                    busy: _sending,
+                    onSend: _send,
+                    onInterrupt: _interrupt,
+                    field: ChatKeyboardShortcuts(
                       controller: _controller,
-                      enabled: !_sending,
-                      minLines: 1,
-                      maxLines: 6,
-                      decoration: InputDecoration(
-                        hintText: running
-                            ? 'Send a message to steer the agent…'
-                            : 'Message the agent…',
-                        border: const OutlineInputBorder(),
+                      hasAttachments: _images.isNotEmpty,
+                      onSend: _sending ? null : _send,
+                      child: TextField(
+                        controller: _controller,
+                        enabled: !_sending,
+                        minLines: 1,
+                        maxLines: 6,
+                        decoration: InputDecoration(
+                          hintText: running
+                              ? 'Send a message to steer the agent…'
+                              : 'Message the agent…',
+                          border: const OutlineInputBorder(),
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
               const SizedBox(width: 12),
-              Tooltip(
-                message: running ? 'Steer' : 'Send',
-                child: FilledButton.icon(
-                  onPressed: _sending ? null : _send,
-                  icon: const Icon(Icons.send),
-                  label: Text(running ? 'Steer' : 'Send'),
-                ),
-              ),
             ],
           ),
         ),

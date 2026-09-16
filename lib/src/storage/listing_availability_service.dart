@@ -30,9 +30,19 @@ class ListingAvailabilityService {
   ListingAvailabilityService(
     this.database, {
     http.Client Function()? clientFactory,
-  }) : _clientFactory = clientFactory ?? http.Client.new;
+    DateTime Function()? now,
+  }) : _clientFactory = clientFactory ?? http.Client.new,
+       _now = now ?? DateTime.now;
   final CareerShopperDatabase database;
   final http.Client Function() _clientFactory;
+  final DateTime Function() _now;
+
+  DateTime _retryAt(SourceBackoffException error) {
+    final delay = error.retryAfter ?? const Duration(hours: 1);
+    return _now().toUtc().add(
+      delay < const Duration(seconds: 1) ? const Duration(seconds: 1) : delay,
+    );
+  }
 
   /// Fetches source text for import; the agent still extracts structured fields.
   Future<Map<String, Object?>> fetchPosting(String jobId) async {
@@ -56,6 +66,14 @@ class ListingAvailabilityService {
         : Uri.tryParse(observation.sourceUrl);
   }
 
+  Future<DateTime?> postingRetryAt(String jobId) async {
+    final job = await JobRepository(database).getJob(jobId);
+    if (job == null) return null;
+    final uri = await _sourceUri(jobId, job.applicationUrl);
+    if (uri == null) return null;
+    return (await _providerAccess(uri)).retryAt;
+  }
+
   Future<Map<String, Object?>> _fetchPosting(String jobId, Uri? uri) async {
     if (uri == null ||
         !{'http', 'https'}.contains(uri.scheme) ||
@@ -63,9 +81,14 @@ class ListingAvailabilityService {
         uri.userInfo.isNotEmpty) {
       return {'error': 'No usable saved listing URL.', 'request_sent': false};
     }
-    if (await _providerBlocked(uri)) {
+    final access = await _providerAccess(uri);
+    if (access.blocked || access.retryAt != null) {
       return {
-        'error': 'Provider previously blocked access; no request sent.',
+        'error': access.blocked
+            ? 'Provider previously blocked access; no request sent.'
+            : 'Provider rate limit; no request sent. Retry after ${access.retryAt!.toIso8601String()}.',
+        if (access.retryAt != null)
+          'retry_at': access.retryAt!.toIso8601String(),
         'blocked': true,
         'request_sent': false,
         'source_url': uri.toString(),
@@ -73,6 +96,7 @@ class ListingAvailabilityService {
     }
     final client = _clientFactory();
     var blocked = false;
+    DateTime? retryAt;
     late Map<String, Object?> result;
     try {
       final body = await fetchText(
@@ -126,11 +150,12 @@ class ListingAvailabilityService {
       blocked = true;
       result = {'error': error.message, 'blocked': true};
     } on SourceBackoffException catch (error) {
-      blocked = true;
+      retryAt = _retryAt(error);
       result = {
         'error': error.message,
         'blocked': true,
-        'retry_after_seconds': error.retryAfter?.inSeconds,
+        'retry_after_seconds': error.retryAfter?.inSeconds ?? 3600,
+        'retry_at': retryAt.toIso8601String(),
       };
     } on Object catch (error) {
       result = {'error': 'Posting retrieval failed: $error', 'blocked': false};
@@ -151,7 +176,8 @@ class ListingAvailabilityService {
               jsonEncode({
                 'source_url': uri.toString(),
                 'error': result['error'],
-                if (blocked) 'blocked_host': uri.host,
+                if (blocked || retryAt != null) 'blocked_host': uri.host,
+                if (retryAt != null) 'backoff_until': retryAt.toIso8601String(),
               }),
             ),
             occurredAt: DateTime.now().toUtc(),
@@ -172,15 +198,19 @@ class ListingAvailabilityService {
     if (uri != null &&
         {'http', 'https'}.contains(uri.scheme) &&
         uri.host.isNotEmpty) {
-      if (await _providerBlocked(uri)) {
+      final access = await _providerAccess(uri);
+      if (access.blocked || access.retryAt != null) {
         result = ListingAvailabilityResult(
           'inconclusive',
-          'Provider previously blocked access; no request sent. Document preparation may proceed.',
+          access.blocked
+              ? 'Provider previously blocked access; no request sent. Document preparation may proceed.'
+              : 'Provider rate limit until ${access.retryAt!.toIso8601String()}; no request sent. Document preparation may proceed.',
           uri.toString(),
         );
       } else {
         final client = _clientFactory();
         String? blockedHost;
+        DateTime? retryAt;
         try {
           final body = await fetchText(
             client,
@@ -213,6 +243,14 @@ class ListingAvailabilityService {
             error.message,
             uri.toString(),
           );
+        } on SourceBackoffException catch (error) {
+          blockedHost = uri.host;
+          retryAt = _retryAt(error);
+          result = ListingAvailabilityResult(
+            'inconclusive',
+            'Provider rate limit until ${retryAt.toIso8601String()}; document preparation may proceed.',
+            uri.toString(),
+          );
         } on SourceUnavailableException catch (error) {
           blockedHost = uri.host;
           result = ListingAvailabilityResult(
@@ -229,7 +267,12 @@ class ListingAvailabilityService {
         } finally {
           client.close();
         }
-        await _record(jobId, result, blockedHost: blockedHost);
+        await _record(
+          jobId,
+          result,
+          blockedHost: blockedHost,
+          retryAt: retryAt,
+        );
         return result;
       }
     }
@@ -237,7 +280,8 @@ class ListingAvailabilityService {
     return result;
   }
 
-  Future<bool> _providerBlocked(Uri uri) async {
+  Future<({bool blocked, DateTime? retryAt})> _providerAccess(Uri uri) async {
+    final now = _now().toUtc();
     final prior =
         await (database.select(database.auditEvents)
               ..where(
@@ -249,31 +293,56 @@ class ListingAvailabilityService {
               )
               ..orderBy([(r) => OrderingTerm.desc(r.sequence)]))
             .get();
-    final hostEvents = prior.where(
-      (row) => (jsonDecode(row.payloadJson) as Map)['blocked_host'] == uri.host,
-    );
-    final blocked =
-        hostEvents.isNotEmpty &&
-        hostEvents.first.eventType != 'listing.block_cleared';
+    DateTime? retryAt;
+    for (final row in prior) {
+      final payload = jsonDecode(row.payloadJson) as Map;
+      if (payload['blocked_host'] != uri.host) continue;
+      if (row.eventType == 'listing.block_cleared') break;
+      var until = DateTime.tryParse(payload['backoff_until'] as String? ?? '');
+      // Older posting fetches recorded 429 as a permanent host block and
+      // discarded Retry-After. Only this exact rate-limit record is temporary.
+      if (until == null &&
+          payload['error'] == 'The source requested rate-limit backoff.') {
+        until = row.occurredAt.toUtc().add(const Duration(hours: 1));
+      }
+      if (until == null) return (blocked: true, retryAt: null);
+      if (until.isAfter(now) && (retryAt == null || until.isAfter(retryAt))) {
+        retryAt = until;
+      }
+    }
     final sourceHealth = await database
         .customSelect(
-          '''
-        SELECT c.source_family, c.config_json FROM source_configs c
-        JOIN source_health_records h ON h.source_config_id = c.id
-        WHERE h.state IN ('unavailable_blocked', 'unavailable_captcha', 'authentication_required')
-          OR h.backoff_until > ?
-      ''',
-          variables: [Variable(DateTime.now().toUtc())],
+          '''SELECT c.source_family, c.config_json, h.state, h.backoff_until
+      FROM source_configs c JOIN source_health_records h ON h.source_config_id = c.id
+      WHERE h.state IN ('unavailable', 'unavailable_blocked', 'unavailable_captcha', 'authentication_required')
+        OR h.backoff_until > ?''',
+          variables: [Variable(now)],
           readsFrom: {database.sourceConfigs, database.sourceHealthRecords},
         )
         .get();
-    final sourceBlocked = sourceHealth.any((row) {
+    for (final row in sourceHealth) {
       final family = row.read<String>('source_family');
-      return uri.host == '$family.com' ||
+      if (!(uri.host == '$family.com' ||
           uri.host.endsWith('.$family.com') ||
-          row.read<String>('config_json').contains(uri.host);
-    });
-    return blocked || sourceBlocked;
+          row.read<String>('config_json').contains(uri.host))) {
+        continue;
+      }
+      if (const {
+        'unavailable',
+        'unavailable_blocked',
+        'unavailable_captcha',
+        'authentication_required',
+      }.contains(row.read<String>('state'))) {
+        return (blocked: true, retryAt: null);
+      }
+      final until = row.readNullable<DateTime>('backoff_until');
+      if (until != null &&
+          until.isAfter(now) &&
+          (retryAt == null || until.isAfter(retryAt))) {
+        retryAt = until;
+      }
+    }
+    return (blocked: false, retryAt: retryAt);
   }
 
   Future<void> clearBlock(String jobId) async {
@@ -304,6 +373,7 @@ class ListingAvailabilityService {
     String jobId,
     ListingAvailabilityResult result, {
     String? blockedHost,
+    DateTime? retryAt,
   }) => database.transaction(() async {
     if (result.expired) {
       await (database.update(database.jobs)..where((r) => r.id.equals(jobId)))
@@ -336,7 +406,11 @@ class ListingAvailabilityService {
             subjectId: jobId,
             actor: 'system',
             payloadJson: Value(
-              jsonEncode({...result.toJson(), 'blocked_host': ?blockedHost}),
+              jsonEncode({
+                ...result.toJson(),
+                'blocked_host': ?blockedHost,
+                if (retryAt != null) 'backoff_until': retryAt.toIso8601String(),
+              }),
             ),
             occurredAt: DateTime.now().toUtc(),
           ),

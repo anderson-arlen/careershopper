@@ -17,12 +17,21 @@ class ApplicationMaterials {
     required this.coverLetter,
     required this.reviewed,
     required this.createdAt,
+    this.outdated = false,
   });
   final String id;
   final String resume;
   final String coverLetter;
   final bool reviewed;
   final DateTime createdAt;
+  final bool outdated;
+}
+
+class OutdatedApplicationDocuments extends StateError {
+  OutdatedApplicationDocuments()
+    : super(
+        'These documents were saved before your profile changed. Confirm that you want to apply with these documents, or regenerate them.',
+      );
 }
 
 class ApplicationMaterialRepository {
@@ -30,45 +39,82 @@ class ApplicationMaterialRepository {
   final CareerShopperDatabase database;
   final _uuid = const Uuid();
 
-  Stream<ApplicationMaterials?> watch(String jobId) {
-    final query =
-        database.select(database.materialSets).join([
-            innerJoin(
-              database.applications,
-              database.applications.id.equalsExp(
-                database.materialSets.applicationId,
-              ),
-            ),
-          ])
-          ..where(
-            database.applications.jobId.equals(jobId) &
-                database.materialSets.staged.equals(false),
-          )
-          ..orderBy([
-            OrderingTerm.desc(database.materialSets.createdAt),
-            OrderingTerm.desc(database.materialSets.id),
-          ])
-          ..limit(1);
-    return query.watch().map(
-      (rows) => rows.isEmpty
-          ? null
-          : _view(rows.first.readTable(database.materialSets)),
-    );
-  }
+  // Store preference values rather than timestamps so saving an unchanged
+  // preference does not make a document stale.
+  static const _preferencesSql =
+      """(SELECT json_group_array(json_array(key, value_json))
+    FROM (SELECT key, value_json FROM career_preferences ORDER BY key))""";
 
-  ApplicationMaterials _view(MaterialSetRow row) => ApplicationMaterials(
-    id: row.id,
-    resume: row.resumeMarkdown,
-    coverLetter: row.coverLetterMarkdown ?? '',
-    reviewed: row.reviewedAt != null,
-    createdAt: row.createdAt,
-  );
+  // Shared by document reads and the job list; aliases match the table names.
+  static const outdatedSql =
+      """(applications.status IN ('unknown', 'not_applied', 'ready_to_apply') AND (
+        EXISTS (
+          SELECT 1 FROM json_each(profile_snapshots.manifest_json, '\$.confirmed_fact_revision_ids') refs
+          WHERE NOT EXISTS (
+            SELECT 1 FROM career_facts f JOIN career_fact_revisions r ON r.id = f.current_revision_id
+            WHERE r.id = refs.value AND r.verification_status = 'confirmed'
+              AND r.visibility IN ('resume', 'application_only') AND f.kind = 'resume_content'
+          )
+        ) OR
+        CASE WHEN json_type(profile_snapshots.manifest_json, '\$.document_preferences') IS NOT NULL
+          THEN json_extract(profile_snapshots.manifest_json, '\$.document_preferences') != $_preferencesSql
+          ELSE EXISTS (SELECT 1 FROM career_preferences WHERE updated_at > material_sets.created_at)
+        END
+      ))""";
+
+  Stream<ApplicationMaterials?> watch(String jobId) => database
+      .customSelect(
+        """SELECT material_sets.*,
+      $outdatedSql AS documents_outdated
+      FROM material_sets
+      JOIN applications ON applications.id = material_sets.application_id
+      JOIN profile_snapshots ON profile_snapshots.id = material_sets.profile_snapshot_id
+      WHERE applications.job_id = ? AND material_sets.staged = 0
+      ORDER BY material_sets.created_at DESC, material_sets.id DESC LIMIT 1""",
+        variables: [Variable.withString(jobId)],
+        readsFrom: {
+          database.materialSets,
+          database.applications,
+          database.profileSnapshots,
+          database.careerFacts,
+          database.careerFactRevisions,
+          database.careerPreferences,
+        },
+      )
+      .watch()
+      .map((rows) {
+        if (rows.isEmpty) return null;
+        final row = database.materialSets.map(rows.single.data);
+        return ApplicationMaterials(
+          id: row.id,
+          resume: row.resumeMarkdown,
+          coverLetter: row.coverLetterMarkdown ?? '',
+          reviewed: row.reviewedAt != null,
+          createdAt: row.createdAt,
+          outdated: rows.single.read<bool>('documents_outdated'),
+        );
+      });
 
   Future<MaterialSetRow> get(String id) => (database.select(
     database.materialSets,
   )..where((row) => row.id.equals(id))).getSingle();
 
-  Future<void> validate(String resume, String coverLetter) async {
+  Future<void> validate(String resume, String coverLetter) =>
+      _validate(resume, coverLetter);
+
+  // Existing immutable documents keep their original confirmed sources when
+  // the user elects to reuse them after editing their profile.
+  Future<void> validateSaved(MaterialSetRow saved) => _validate(
+    saved.resumeMarkdown,
+    saved.coverLetterMarkdown ?? '',
+    currentEvidence: false,
+  );
+
+  Future<void> _validate(
+    String resume,
+    String coverLetter, {
+    bool currentEvidence = true,
+  }) async {
     final documents = <String, List<MaterialBlock>>{};
     final errors = <String>[];
     for (final (kind, markdown) in [
@@ -90,14 +136,18 @@ class ApplicationMaterialRepository {
     final revisions = await (database.select(
       database.careerFactRevisions,
     )..where((row) => row.id.isIn(ids))).get();
-    final current = await (database.select(
-      database.careerFacts,
-    )..where((row) => row.currentRevisionId.isIn(ids))).get();
-    final currentIds = current.map((fact) => fact.currentRevisionId).toSet();
-    final profile = await ResumeContentRepository(
-      ProfileRepository(database),
-    ).evidence();
-    final disclosableIds = profile.map((fact) => fact.revisionId).toSet();
+    var currentIds = <String?>{};
+    var disclosableIds = <String>{};
+    if (currentEvidence) {
+      final current = await (database.select(
+        database.careerFacts,
+      )..where((row) => row.currentRevisionId.isIn(ids))).get();
+      currentIds = current.map((fact) => fact.currentRevisionId).toSet();
+      final profile = await ResumeContentRepository(
+        ProfileRepository(database),
+      ).evidence();
+      disclosableIds = profile.map((fact) => fact.revisionId).toSet();
+    }
     final invalid = <String, String>{};
     for (final id in ids) {
       final revision = revisions.where((r) => r.id == id).firstOrNull;
@@ -107,9 +157,9 @@ class ApplicationMaterialRepository {
       } else if (revision.verificationStatus != 'confirmed' ||
           revision.visibility == 'private') {
         invalid[id] = 'not a confirmed, non-private career-fact revision';
-      } else if (!currentIds.contains(id)) {
+      } else if (currentEvidence && !currentIds.contains(id)) {
         invalid[id] = 'fact has changed; use its current confirmed revision';
-      } else if (!disclosableIds.contains(id)) {
+      } else if (currentEvidence && !disclosableIds.contains(id)) {
         invalid[id] =
             'archived or confidential evidence is not available; cite the current saved resume content';
       }
@@ -124,14 +174,16 @@ class ApplicationMaterialRepository {
       }
     }
     if (errors.isNotEmpty) throw StateError(errors.join('\n'));
-    await ResumeContentRepository(
-      ProfileRepository(database),
-    ).validateApplicationDisclosure(
-      documents.values
-          .expand((blocks) => blocks)
-          .map((b) => b.plainText)
-          .join('\n'),
-    );
+    if (currentEvidence) {
+      await ResumeContentRepository(
+        ProfileRepository(database),
+      ).validateApplicationDisclosure(
+        documents.values
+            .expand((blocks) => blocks)
+            .map((b) => b.plainText)
+            .join('\n'),
+      );
+    }
   }
 
   Future<void> validateGenerated(String resume, String coverLetter) async {
@@ -210,7 +262,12 @@ class ApplicationMaterialRepository {
       final job = await (database.select(
         database.jobs,
       )..where((row) => row.id.equals(application.jobId))).getSingle();
-      if (application.outcome != 'active' ||
+      if ((jsonDecode(order.scopeJson)['require_unapplied'] == true &&
+              ![
+                'not_applied',
+                'ready_to_apply',
+              ].contains(application.status)) ||
+          application.outcome != 'active' ||
           job.availability == 'closed' ||
           job.reviewState != 'approved' ||
           job.currentSnapshotId != staged.jobSnapshotId) {
@@ -293,7 +350,15 @@ class ApplicationMaterialRepository {
         ...parseMaterialMarkdown(coverLetter),
       ].expand((b) => b.factIds).toSet().toList()..sort();
       final now = DateTime.now().toUtc();
-      final manifest = jsonEncode({'confirmed_fact_revision_ids': ids});
+      final preferences =
+          (await database
+                  .customSelect('SELECT $_preferencesSql AS value')
+                  .getSingle())
+              .read<String>('value');
+      final manifest = jsonEncode({
+        'confirmed_fact_revision_ids': ids,
+        'document_preferences': preferences,
+      });
       final hash = sha256.convert(utf8.encode(manifest)).toString();
       var profile =
           await (database.select(database.profileSnapshots)

@@ -55,6 +55,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   HomeDestination _destination = HomeDestination.jobs;
   bool _allJobs = false;
+  int _jobsRefreshRequest = 0;
   late final _inboxCounts = widget.jobs.watchJobCount(view: 'inbox').distinct();
 
   Future<void> _addListing() async {
@@ -112,6 +113,10 @@ class _HomeScreenState extends State<HomeScreen> {
               Widget inboxIcon(IconData icon) => extended || count == null
                   ? Icon(icon)
                   : Badge(label: Text('$count'), child: Icon(icon));
+              // The rail centers destinations independently. Equal label widths
+              // keep every icon and label aligned, including the Jobs action.
+              Widget navigationLabel(Widget child) =>
+                  extended ? SizedBox(width: 168, child: child) : child;
               return NavigationRail(
                 selectedIndex: _destination.index,
                 extended: MediaQuery.sizeOf(context).width >= 1180,
@@ -130,60 +135,79 @@ class _HomeScreenState extends State<HomeScreen> {
                   NavigationRailDestination(
                     icon: inboxIcon(Icons.work_outline),
                     selectedIcon: inboxIcon(Icons.work),
-                    label: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text('Jobs'),
-                        if (count != null) ...[
-                          const SizedBox(width: 8),
-                          Text('$count', key: const ValueKey('inbox-count')),
+                    label: navigationLabel(
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('Jobs'),
+                          if (count != null) ...[
+                            const SizedBox(width: 8),
+                            Text('$count', key: const ValueKey('inbox-count')),
+                          ],
+                          if (extended &&
+                              _destination == HomeDestination.jobs) ...[
+                            const Spacer(),
+                            const Tooltip(
+                              message: 'Refresh jobs',
+                              child: Icon(Icons.refresh, size: 18),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
                   NavigationRailDestination(
                     icon: Icon(Icons.record_voice_over_outlined),
                     selectedIcon: Icon(Icons.record_voice_over),
-                    label: Text('Interviews'),
+                    label: navigationLabel(Text('Interviews')),
                   ),
                   NavigationRailDestination(
                     icon: Icon(Icons.business_outlined),
                     selectedIcon: Icon(Icons.business),
-                    label: Text(extended ? 'Blocked employers' : 'Blocked'),
+                    label: navigationLabel(
+                      Text(extended ? 'Blocked employers' : 'Blocked'),
+                    ),
                   ),
                   NavigationRailDestination(
                     icon: Icon(Icons.badge_outlined),
                     selectedIcon: Icon(Icons.badge),
-                    label: Text('Profile'),
+                    label: navigationLabel(Text('Profile')),
                   ),
                   NavigationRailDestination(
                     icon: Icon(Icons.description_outlined),
                     selectedIcon: Icon(Icons.description),
-                    label: Text('Documents'),
+                    label: navigationLabel(Text('Documents')),
                   ),
                   NavigationRailDestination(
                     icon: Icon(Icons.manage_search),
                     selectedIcon: Icon(Icons.manage_search),
-                    label: Text('Searches'),
+                    label: navigationLabel(Text('Searches')),
                   ),
                   NavigationRailDestination(
                     icon: Icon(Icons.hub_outlined),
                     selectedIcon: Icon(Icons.hub),
-                    label: Text('Sources'),
+                    label: navigationLabel(Text('Sources')),
                   ),
                   NavigationRailDestination(
                     icon: Icon(Icons.smart_toy_outlined),
                     selectedIcon: Icon(Icons.smart_toy),
-                    label: Text('AI'),
+                    label: navigationLabel(Text('AI')),
                   ),
                   NavigationRailDestination(
                     icon: Icon(Icons.query_stats_outlined),
                     selectedIcon: Icon(Icons.query_stats),
-                    label: Text('Statistics'),
+                    label: navigationLabel(Text('Statistics')),
                   ),
                 ],
                 onDestinationSelected: (index) {
-                  setState(() => _destination = HomeDestination.values[index]);
+                  if (_destination == HomeDestination.jobs &&
+                      index == HomeDestination.jobs.index) {
+                    setState(() => _jobsRefreshRequest++);
+                  } else {
+                    setState(
+                      () => _destination = HomeDestination.values[index],
+                    );
+                  }
                 },
               );
             },
@@ -198,7 +222,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _content() {
     return switch (_destination) {
       HomeDestination.jobs => JobBrowser(
-        key: ValueKey('jobs-browser-$_allJobs'),
+        key: const ValueKey('jobs-browser'),
+        refreshRequest: _jobsRefreshRequest,
+        view: _allJobs ? 'all' : 'inbox',
         title: 'Jobs',
         viewSelector: SegmentedButton<bool>(
           segments: const [
@@ -222,17 +248,18 @@ class _HomeScreenState extends State<HomeScreen> {
           search: search,
           filters: filters,
         ),
-        refreshJobs: _allJobs ? null : () => widget.jobs.watchInbox().first,
+        refreshJobs: () =>
+            widget.jobs.watchJobs(view: _allJobs ? 'all' : 'inbox').first,
         repository: widget.jobs,
         interviews: widget.interviews,
         onPrepareInterviews: widget.onPrepareInterviews,
         harnesses: widget.harnesses,
         onQueueApplication: (job) => _queueApplication(job.id),
-        onAddListing: _addListing,
         onRunAi: (job) => _runAi(job.id, showActivity: job.aiError == null),
       ),
       HomeDestination.interviews => JobBrowser(
         key: const ValueKey('interviews-browser'),
+        view: 'interviewing',
         title: 'Interviews',
         openInterviews: true,
         emptyTitle: 'No active interviews',
@@ -250,7 +277,6 @@ class _HomeScreenState extends State<HomeScreen> {
         onPrepareInterviews: widget.onPrepareInterviews,
         harnesses: widget.harnesses,
         onQueueApplication: (job) => _queueApplication(job.id),
-        onAddListing: _addListing,
         onRunAi: (job) => _runAi(job.id, showActivity: job.aiError == null),
       ),
       HomeDestination.blockedEmployers => BlockedEmployersPage(

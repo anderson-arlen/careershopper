@@ -58,7 +58,9 @@
   installation, or messaging. The sole exception is application_answer_generate,
   a typed application-essay operation using the existing default model/settings,
   shared writing style, and confirmed profile. Return its answer/error without
-  saving answer history. No model/command overrides or general prompt endpoint.
+  automatically saving answer history. Separate local answer-save/read operations
+  may record user-selected drafts and submitted answers without invoking ACP.
+  No model/command overrides or general prompt endpoint.
   Its writer is read-only and cannot recursively invoke generation. Saved
   activity and settings may otherwise be exposed read-only for inspection.
 
